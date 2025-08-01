@@ -6,14 +6,14 @@
   - Define plugin metadata and version information
   - _Requirements: 5.1, 5.3_
 
-- [-] 2. Implement core plugin infrastructure
+- [x] 2. Implement core plugin infrastructure
   - [x] 2.1 Create plugin registration and initialization
     - Implement `tts_plugin_register()` function to register with Zathura
     - Create plugin entry point and basic lifecycle management
     - Set up plugin metadata structure
     - _Requirements: 5.1, 5.2_
 
-  - [ ] 2.2 Implement basic plugin lifecycle management
+  - [x] 2.2 Implement basic plugin lifecycle management
     - Create `tts_plugin_init()` for plugin initialization
     - Implement `tts_plugin_cleanup()` for resource cleanup
     - Add error handling for plugin loading failures

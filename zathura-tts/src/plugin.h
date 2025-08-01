@@ -2,7 +2,6 @@
 #define ZATHURA_TTS_PLUGIN_H
 
 #include <zathura/plugin-api.h>
-#include <zathura/zathura.h>
 #include <girara/types.h>
 #include <glib.h>
 
@@ -32,6 +31,10 @@ typedef struct tts_plugin_s {
 zathura_error_t tts_plugin_register(zathura_t* zathura);
 zathura_error_t tts_plugin_init(zathura_t* zathura);
 void tts_plugin_cleanup(void);
+
+/* Plugin state management */
+bool tts_plugin_is_initialized(void);
+zathura_error_t tts_plugin_validate_state(void);
 
 /* Plugin instance access */
 tts_plugin_t* tts_plugin_get_instance(void);

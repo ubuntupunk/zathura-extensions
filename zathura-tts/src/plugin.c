@@ -54,6 +54,7 @@ tts_plugin_init(zathura_t* zathura)
   if (g_tts_plugin == NULL) {
     zathura_error_t result = tts_plugin_register(zathura);
     if (result != ZATHURA_ERROR_OK) {
+      girara_error("TTS plugin initialization failed: registration error");
       return result;
     }
   }
@@ -69,8 +70,12 @@ tts_plugin_init(zathura_t* zathura)
   /* Validate zathura instance matches registered instance */
   if (g_tts_plugin->zathura != zathura) {
     girara_error("TTS plugin initialization failed: zathura instance mismatch");
+    tts_plugin_cleanup();
     return ZATHURA_ERROR_INVALID_ARGUMENTS;
   }
+
+  /* Session will be initialized in future tasks when session structure is defined */
+  g_tts_plugin->session = NULL;
 
   /* TODO: Initialize TTS subsystems in future tasks */
   /* This will include:
@@ -103,8 +108,14 @@ tts_plugin_cleanup(void)
    * - Audio controller shutdown
    * - UI controller unregistration
    * - Configuration saving
-   * - Session cleanup
    */
+
+  /* Clean up session if allocated */
+  if (g_tts_plugin->session != NULL) {
+    /* TODO: Add session-specific cleanup in future tasks */
+    g_free(g_tts_plugin->session);
+    g_tts_plugin->session = NULL;
+  }
 
   /* Mark as not initialized */
   g_tts_plugin->initialized = false;
@@ -122,13 +133,41 @@ tts_plugin_cleanup(void)
 
   /* Reset references */
   g_tts_plugin->zathura = NULL;
-  g_tts_plugin->session = NULL;
 
   /* Free plugin instance */
   g_free(g_tts_plugin);
   g_tts_plugin = NULL;
 
   girara_info("TTS plugin cleanup completed");
+}
+
+bool
+tts_plugin_is_initialized(void)
+{
+  return (g_tts_plugin != NULL && g_tts_plugin->initialized);
+}
+
+zathura_error_t
+tts_plugin_validate_state(void)
+{
+  if (g_tts_plugin == NULL) {
+    girara_error("TTS plugin state validation failed: plugin not registered");
+    return ZATHURA_ERROR_UNKNOWN;
+  }
+
+  if (!g_tts_plugin->initialized) {
+    girara_error("TTS plugin state validation failed: plugin not initialized");
+    return ZATHURA_ERROR_UNKNOWN;
+  }
+
+  if (g_tts_plugin->zathura == NULL) {
+    girara_error("TTS plugin state validation failed: invalid zathura instance");
+    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+  }
+
+  /* Session validation will be added in future tasks when session is implemented */
+
+  return ZATHURA_ERROR_OK;
 }
 
 tts_plugin_t*
@@ -138,10 +177,10 @@ tts_plugin_get_instance(void)
 }
 
 /* Plugin entry point - required by Zathura plugin system */
-/* TTS plugin doesn't handle document formats, so no functions or mimetypes */
+/* TTS plugin doesn't handle document formats, but we need at least one mime type for registration */
 ZATHURA_PLUGIN_REGISTER_WITH_FUNCTIONS(
   TTS_PLUGIN_NAME,
   0, 1, 0,
   ZATHURA_PLUGIN_FUNCTIONS({}),
-  ZATHURA_PLUGIN_MIMETYPES({})
+  ZATHURA_PLUGIN_MIMETYPES({"application/x-tts-extension"})
 )
