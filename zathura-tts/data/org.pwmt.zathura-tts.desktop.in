@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=Zathura TTS Plugin
+Comment=Text-to-speech functionality for Zathura PDF viewer
+Version=@PLUGIN_VERSION@
+Type=Application
+Categories=Office;Viewer;
+MimeType=application/pdf;
+NoDisplay=true
+
+[Zathura Plugin]
+Name=@PLUGIN_NAME@
+Version=@PLUGIN_VERSION@
+APIVersion=@PLUGIN_API_VERSION@
+Description=Adds text-to-speech reading capabilities to Zathura
+Author=Zathura TTS Plugin Team
+License=Zlib

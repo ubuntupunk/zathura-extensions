@@ -1,0 +1,7 @@
+# Build options for zathura-tts
+
+option('speechd', type: 'feature', value: 'auto',
+       description: 'Enable Speech Dispatcher support')
+
+option('tests', type: 'boolean', value: false,
+       description: 'Build test suite')
