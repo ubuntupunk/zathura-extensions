@@ -1,0 +1,3 @@
+*.onnx
+zathura/*
+zathura-pdf-poppler/*

@@ -61,6 +61,19 @@ This plugin allows you to listen to your PDF documents directly within Zathura, 
     sudo meson install -C build
     ```
 
+4.  **Download Piper Voices**:
+    Piper requires voice models to function. You can download high-quality voices from the [Piper Voices repository on Hugging Face](https://huggingface.co/rhasspy/piper-voices/tree/main).
+
+    Each voice consists of a `.onnx` file and a `.onnx.json` file.
+
+    **Example**: To download the `en_US-lessac-medium` voice:
+    ```bash
+    wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+    wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+    ```
+
+    You should place these voice files in a directory where the plugin can find them, such as `~/.local/share/zathura-tts/voices/`. You can configure the voice path in your `zathurarc`.
+
 ## Usage
 
 Once installed, the TTS functionality can be controlled with the following keyboard shortcuts in Zathura:
