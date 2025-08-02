@@ -5,6 +5,19 @@
 #include "tts-engine.h"
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <signal.h>
+
+/* Piper-TTS engine data structure */
+typedef struct {
+    GPid current_process;       /**< Current Piper process PID */
+    bool is_speaking;          /**< Whether currently speaking */
+    bool is_paused;            /**< Whether currently paused */
+    char* model_path;          /**< Path to Piper model */
+    char* config_path;         /**< Path to Piper config */
+    girara_list_t* available_voices; /**< List of available voices */
+} piper_engine_data_t;
 
 /* Forward declarations for engine-specific implementations */
 static bool piper_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error);
@@ -107,7 +120,8 @@ tts_engine_t* tts_engine_new(tts_engine_type_t type, zathura_error_t* error) {
         case TTS_ENGINE_PIPER:
             engine->functions = piper_functions;
             engine->name = g_strdup("Piper-TTS");
-            engine->is_available = command_exists("piper");
+            /* Check for Poetry-installed Piper first, then system Piper */
+            engine->is_available = command_exists("poetry") || command_exists("piper");
             break;
             
         case TTS_ENGINE_SPEECH_DISPATCHER:
@@ -435,48 +449,347 @@ tts_engine_config_t* tts_engine_config_copy(const tts_engine_config_t* config) {
 /* These will be implemented in separate tasks (4.2, 4.3, 4.4) */
 
 static bool piper_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
-    /* TODO: Implement in task 4.2 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    /* Create Piper engine data */
+    piper_engine_data_t* piper_data = g_malloc0(sizeof(piper_engine_data_t));
+    if (piper_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return false;
+    }
+    
+    piper_data->current_process = 0;
+    piper_data->is_speaking = false;
+    piper_data->is_paused = false;
+    piper_data->model_path = NULL;
+    piper_data->config_path = NULL;
+    piper_data->available_voices = NULL;
+    
+    /* Set default model path if voice is specified */
+    if (config && config->voice_name) {
+        piper_data->model_path = g_strdup_printf("%s/.local/share/piper-voices/%s.onnx", 
+                                                g_get_home_dir(), config->voice_name);
+        piper_data->config_path = g_strdup_printf("%s/.local/share/piper-voices/%s.onnx.json", 
+                                                 g_get_home_dir(), config->voice_name);
+    } else {
+        /* Use default model from voices directory */
+        char* current_dir = g_get_current_dir();
+        char* project_dir = g_strdup_printf("%s/zathura-tts", current_dir);
+        piper_data->model_path = g_strdup_printf("%s/voices/en_US-lessac-medium.onnx", project_dir);
+        piper_data->config_path = g_strdup_printf("%s/voices/en_US-lessac-medium.onnx.json", project_dir);
+        g_free(current_dir);
+        g_free(project_dir);
+    }
+    
+    engine->engine_data = piper_data;
+    engine->state = TTS_ENGINE_STATE_IDLE;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static void piper_engine_cleanup(tts_engine_t* engine) {
-    /* TODO: Implement in task 4.2 */
+    if (engine == NULL || engine->engine_data == NULL) {
+        return;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Stop any running process */
+    if (piper_data->current_process > 0) {
+        kill(piper_data->current_process, SIGTERM);
+        waitpid(piper_data->current_process, NULL, 0);
+        piper_data->current_process = 0;
+    }
+    
+    /* Free allocated memory */
+    g_free(piper_data->model_path);
+    g_free(piper_data->config_path);
+    
+    if (piper_data->available_voices != NULL) {
+        girara_list_free(piper_data->available_voices);
+    }
+    
+    g_free(piper_data);
+    engine->engine_data = NULL;
 }
 
 static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_error_t* error) {
-    /* TODO: Implement in task 4.2 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || text == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Stop any current speech */
+    if (piper_data->current_process > 0) {
+        kill(piper_data->current_process, SIGTERM);
+        waitpid(piper_data->current_process, NULL, 0);
+        piper_data->current_process = 0;
+    }
+    
+    /* Build Piper command - prefer Poetry-installed version */
+    char* command;
+    char* current_dir = g_get_current_dir();
+    char* project_dir = g_strdup_printf("%s/zathura-tts", current_dir);
+    g_free(current_dir);
+    
+    if (piper_data->model_path && g_file_test(piper_data->model_path, G_FILE_TEST_EXISTS)) {
+        /* Use specific model if available */
+        command = g_strdup_printf("cd '%s' && echo '%s' | poetry run piper --model '%s' --output-raw | aplay -r 22050 -f S16_LE -t raw -",
+                                 project_dir, text, piper_data->model_path);
+    } else {
+        /* Use default Piper command via Poetry */
+        command = g_strdup_printf("cd '%s' && echo '%s' | poetry run piper --output-raw | aplay -r 22050 -f S16_LE -t raw -", 
+                                 project_dir, text);
+    }
+    
+    g_free(project_dir);
+    
+    if (command == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return false;
+    }
+    
+    /* Execute Piper command asynchronously */
+    GPid child_pid;
+    gchar** argv;
+    GError* g_error = NULL;
+    
+    if (!g_shell_parse_argv(command, NULL, &argv, &g_error)) {
+        g_free(command);
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        return false;
+    }
+    
+    bool success = g_spawn_async(NULL, argv, NULL, 
+                                G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
+                                NULL, NULL, &child_pid, &g_error);
+    
+    g_strfreev(argv);
+    g_free(command);
+    
+    if (!success) {
+        if (g_error) {
+            g_error_free(g_error);
+        }
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        return false;
+    }
+    
+    piper_data->current_process = child_pid;
+    piper_data->is_speaking = true;
+    piper_data->is_paused = false;
+    engine->state = TTS_ENGINE_STATE_SPEAKING;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static bool piper_engine_pause(tts_engine_t* engine, bool pause, zathura_error_t* error) {
-    /* TODO: Implement in task 4.2 */
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Note: Piper doesn't support pause/resume directly, so we simulate it */
+    if (piper_data->current_process > 0) {
+        if (pause) {
+            /* Send SIGSTOP to pause the process */
+            if (kill(piper_data->current_process, SIGSTOP) == 0) {
+                piper_data->is_paused = true;
+                engine->state = TTS_ENGINE_STATE_PAUSED;
+                if (error) *error = ZATHURA_ERROR_OK;
+                return true;
+            }
+        } else {
+            /* Send SIGCONT to resume the process */
+            if (kill(piper_data->current_process, SIGCONT) == 0) {
+                piper_data->is_paused = false;
+                engine->state = TTS_ENGINE_STATE_SPEAKING;
+                if (error) *error = ZATHURA_ERROR_OK;
+                return true;
+            }
+        }
+    }
+    
     if (error) *error = ZATHURA_ERROR_UNKNOWN;
     return false;
 }
 
 static bool piper_engine_stop(tts_engine_t* engine, zathura_error_t* error) {
-    /* TODO: Implement in task 4.2 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Stop any running process */
+    if (piper_data->current_process > 0) {
+        if (kill(piper_data->current_process, SIGTERM) == 0) {
+            waitpid(piper_data->current_process, NULL, 0);
+            piper_data->current_process = 0;
+            piper_data->is_speaking = false;
+            piper_data->is_paused = false;
+            engine->state = TTS_ENGINE_STATE_IDLE;
+            
+            if (error) *error = ZATHURA_ERROR_OK;
+            return true;
+        }
+    }
+    
+    /* If no process was running, still consider it successful */
+    piper_data->is_speaking = false;
+    piper_data->is_paused = false;
+    engine->state = TTS_ENGINE_STATE_IDLE;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static bool piper_engine_set_config(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
-    /* TODO: Implement in task 4.2 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || config == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Update engine configuration */
+    g_free(engine->config.voice_name);
+    engine->config = *config;
+    engine->config.voice_name = config->voice_name ? g_strdup(config->voice_name) : NULL;
+    
+    /* Update model paths if voice changed */
+    if (config->voice_name) {
+        g_free(piper_data->model_path);
+        g_free(piper_data->config_path);
+        
+        piper_data->model_path = g_strdup_printf("%s/.local/share/piper-voices/%s.onnx", 
+                                                g_get_home_dir(), config->voice_name);
+        piper_data->config_path = g_strdup_printf("%s/.local/share/piper-voices/%s.onnx.json", 
+                                                 g_get_home_dir(), config->voice_name);
+    }
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static tts_engine_state_t piper_engine_get_state(tts_engine_t* engine) {
-    /* TODO: Implement in task 4.2 */
-    return TTS_ENGINE_STATE_ERROR;
+    if (engine == NULL || engine->engine_data == NULL) {
+        return TTS_ENGINE_STATE_ERROR;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Check if process is still running */
+    if (piper_data->current_process > 0) {
+        int status;
+        pid_t result = waitpid(piper_data->current_process, &status, WNOHANG);
+        
+        if (result == 0) {
+            /* Process is still running */
+            return piper_data->is_paused ? TTS_ENGINE_STATE_PAUSED : TTS_ENGINE_STATE_SPEAKING;
+        } else {
+            /* Process has finished */
+            piper_data->current_process = 0;
+            piper_data->is_speaking = false;
+            piper_data->is_paused = false;
+            engine->state = TTS_ENGINE_STATE_IDLE;
+            return TTS_ENGINE_STATE_IDLE;
+        }
+    }
+    
+    return TTS_ENGINE_STATE_IDLE;
 }
 
 static girara_list_t* piper_engine_get_voices(tts_engine_t* engine, zathura_error_t* error) {
-    /* TODO: Implement in task 4.2 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return NULL;
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return NULL;
+    }
+    
+    piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
+    
+    /* Return cached voices if available */
+    if (piper_data->available_voices != NULL) {
+        if (error) *error = ZATHURA_ERROR_OK;
+        return piper_data->available_voices;
+    }
+    
+    /* Create voices list */
+    girara_list_t* voices = girara_list_new();
+    if (voices == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return NULL;
+    }
+    
+    girara_list_set_free_function(voices, (girara_free_function_t)tts_voice_info_free);
+    
+    /* Check for available Piper voices in standard locations */
+    const char* voice_dirs[] = {
+        g_strdup_printf("%s/.local/share/piper-voices", g_get_home_dir()),
+        "/usr/share/piper-voices",
+        "/usr/local/share/piper-voices",
+        NULL
+    };
+    
+    for (int i = 0; voice_dirs[i] != NULL; i++) {
+        GDir* dir = g_dir_open(voice_dirs[i], 0, NULL);
+        if (dir != NULL) {
+            const char* filename;
+            while ((filename = g_dir_read_name(dir)) != NULL) {
+                /* Look for .onnx model files */
+                if (g_str_has_suffix(filename, ".onnx")) {
+                    /* Extract voice name (remove .onnx extension) */
+                    char* voice_name = g_strndup(filename, strlen(filename) - 5);
+                    if (voice_name != NULL) {
+                        /* Create voice info with basic metadata */
+                        tts_voice_info_t* voice_info = tts_voice_info_new(
+                            voice_name, 
+                            "en-US",  /* Default language - could be parsed from filename */
+                            "neutral", /* Default gender */
+                            85        /* High quality for neural voices */
+                        );
+                        
+                        if (voice_info != NULL) {
+                            girara_list_append(voices, voice_info);
+                        }
+                        
+                        g_free(voice_name);
+                    }
+                }
+            }
+            g_dir_close(dir);
+        }
+        g_free((char*)voice_dirs[i]);
+    }
+    
+    /* If no voices found, add a default entry */
+    if (girara_list_size(voices) == 0) {
+        tts_voice_info_t* default_voice = tts_voice_info_new(
+            "default", 
+            "en-US", 
+            "neutral", 
+            75
+        );
+        if (default_voice != NULL) {
+            girara_list_append(voices, default_voice);
+        }
+    }
+    
+    /* Cache the voices list */
+    piper_data->available_voices = voices;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return voices;
 }
 
 static bool speech_dispatcher_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {

@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "zathura-tts"
+version = "0.1.0"
+description = "Text-to-Speech plugin for Zathura PDF viewer"
+authors = ["Zathura TTS Team"]
+readme = "README.md"
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.8"
+piper-tts = "^1.2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
