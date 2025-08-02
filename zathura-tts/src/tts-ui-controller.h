@@ -85,6 +85,20 @@ void tts_ui_controller_update_progress(tts_ui_controller_t* controller, int curr
 void tts_ui_controller_show_tts_indicator(tts_ui_controller_t* controller, bool active);
 bool tts_ui_controller_highlight_current_text(tts_ui_controller_t* controller, const char* text);
 
+/* Command interface functions */
+bool tts_ui_controller_register_commands(tts_ui_controller_t* controller);
+void tts_ui_controller_unregister_commands(tts_ui_controller_t* controller);
+
+/* TTS command functions (following Zathura's pattern) */
+bool cmd_tts_toggle(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_stop(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_speed(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_volume(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_voice(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_engine(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_config(girara_session_t* session, girara_list_t* argument_list);
+bool cmd_tts_status(girara_session_t* session, girara_list_t* argument_list);
+
 /* Helper functions */
 tts_ui_controller_t* tts_ui_controller_get_from_session(girara_session_t* session);
 tts_shortcut_info_t* tts_shortcut_info_new(guint modifiers, guint key, const char* sequence, 

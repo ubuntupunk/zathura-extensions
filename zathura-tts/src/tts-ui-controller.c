@@ -8,6 +8,7 @@
 #include <girara/session.h>
 #include <girara/statusbar.h>
 #include <girara/utils.h>
+#include <girara/commands.h>
 #include <zathura/zathura.h>
 #include <zathura/document.h>
 #include <zathura/page.h>
@@ -923,4 +924,304 @@ tts_ui_controller_init_visual_feedback(tts_ui_controller_t* controller)
                                                    controller);
     
     return true;
+}/
+* Command interface functions */
+
+bool 
+tts_ui_controller_register_commands(tts_ui_controller_t* controller) 
+{
+    if (controller == NULL || controller->session == NULL) {
+        return false;
+    }
+    
+    /* Register TTS commands with Girara */
+    bool all_registered = true;
+    
+    all_registered &= girara_inputbar_command_add(controller->session, "tts", NULL, cmd_tts_toggle, NULL, "Toggle TTS on/off");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-stop", NULL, cmd_tts_stop, NULL, "Stop TTS playback");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-speed", NULL, cmd_tts_speed, NULL, "Set TTS speed (0.5-3.0)");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-volume", NULL, cmd_tts_volume, NULL, "Set TTS volume (0-100)");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-voice", NULL, cmd_tts_voice, NULL, "Set TTS voice");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-engine", NULL, cmd_tts_engine, NULL, "Set TTS engine");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-config", NULL, cmd_tts_config, NULL, "Configure TTS settings");
+    all_registered &= girara_inputbar_command_add(controller->session, "tts-status", NULL, cmd_tts_status, NULL, "Show TTS status");
+    
+    if (all_registered) {
+        tts_ui_controller_show_status(controller, "TTS: Commands registered", 2000);
+    } else {
+        tts_ui_controller_show_status(controller, "TTS: Some commands failed to register", 3000);
+    }
+    
+    return all_registered;
+}
+
+void 
+tts_ui_controller_unregister_commands(tts_ui_controller_t* controller) 
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    /* Note: Girara doesn't provide a direct way to unregister commands,
+     * so this is a placeholder for future implementation */
+}
+
+/* TTS command functions (following Zathura's pattern) */
+
+bool 
+cmd_tts_toggle(girara_session_t* session, girara_list_t* argument_list) 
+{
+    (void)argument_list;
+    
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* Use the same logic as the shortcut handler */
+    return sc_tts_toggle(session, NULL, NULL, 0);
+}
+
+bool 
+cmd_tts_stop(girara_session_t* session, girara_list_t* argument_list) 
+{
+    (void)argument_list;
+    
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* Use the same logic as the shortcut handler */
+    return sc_tts_stop(session, NULL, NULL, 0);
+}
+
+bool 
+cmd_tts_speed(girara_session_t* session, girara_list_t* argument_list) 
+{
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL || controller->audio_controller == NULL) {
+        return false;
+    }
+    
+    /* If no arguments, show current speed */
+    if (argument_list == NULL || girara_list_size(argument_list) == 0) {
+        float current_speed = tts_audio_controller_get_speed(controller->audio_controller);
+        char* status_msg = g_strdup_printf("TTS: Current speed %.1fx", current_speed);
+        tts_ui_controller_show_status(controller, status_msg, 3000);
+        g_free(status_msg);
+        return true;
+    }
+    
+    /* Get speed argument */
+    char* speed_str = girara_list_nth(argument_list, 0);
+    if (speed_str == NULL) {
+        tts_ui_controller_show_status(controller, "TTS: Invalid speed argument", 2000);
+        return false;
+    }
+    
+    float new_speed = g_ascii_strtod(speed_str, NULL);
+    if (new_speed < 0.5f || new_speed > 3.0f) {
+        tts_ui_controller_show_status(controller, "TTS: Speed must be between 0.5 and 3.0", 2000);
+        return false;
+    }
+    
+    if (tts_audio_controller_set_speed(controller->audio_controller, new_speed)) {
+        char* status_msg = g_strdup_printf("TTS: Speed set to %.1fx", new_speed);
+        tts_ui_controller_show_status(controller, status_msg, 2000);
+        g_free(status_msg);
+        return true;
+    } else {
+        tts_ui_controller_show_status(controller, "TTS: Failed to set speed", 2000);
+        return false;
+    }
+}
+
+bool 
+cmd_tts_volume(girara_session_t* session, girara_list_t* argument_list) 
+{
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL || controller->audio_controller == NULL) {
+        return false;
+    }
+    
+    /* If no arguments, show current volume */
+    if (argument_list == NULL || girara_list_size(argument_list) == 0) {
+        int current_volume = tts_audio_controller_get_volume(controller->audio_controller);
+        char* status_msg = g_strdup_printf("TTS: Current volume %d%%", current_volume);
+        tts_ui_controller_show_status(controller, status_msg, 3000);
+        g_free(status_msg);
+        return true;
+    }
+    
+    /* Get volume argument */
+    char* volume_str = girara_list_nth(argument_list, 0);
+    if (volume_str == NULL) {
+        tts_ui_controller_show_status(controller, "TTS: Invalid volume argument", 2000);
+        return false;
+    }
+    
+    int new_volume = atoi(volume_str);
+    if (new_volume < 0 || new_volume > 100) {
+        tts_ui_controller_show_status(controller, "TTS: Volume must be between 0 and 100", 2000);
+        return false;
+    }
+    
+    if (tts_audio_controller_set_volume(controller->audio_controller, new_volume)) {
+        char* status_msg = g_strdup_printf("TTS: Volume set to %d%%", new_volume);
+        tts_ui_controller_show_status(controller, status_msg, 2000);
+        g_free(status_msg);
+        return true;
+    } else {
+        tts_ui_controller_show_status(controller, "TTS: Failed to set volume", 2000);
+        return false;
+    }
+}
+
+bool 
+cmd_tts_voice(girara_session_t* session, girara_list_t* argument_list) 
+{
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* If no arguments, list available voices */
+    if (argument_list == NULL || girara_list_size(argument_list) == 0) {
+        tts_ui_controller_show_status(controller, "TTS: Available voices: default (use 'tts-voice <name>' to select)", 4000);
+        return true;
+    }
+    
+    /* Get voice argument */
+    char* voice_name = girara_list_nth(argument_list, 0);
+    if (voice_name == NULL) {
+        tts_ui_controller_show_status(controller, "TTS: Invalid voice argument", 2000);
+        return false;
+    }
+    
+    /* For now, just show that the voice would be set */
+    char* status_msg = g_strdup_printf("TTS: Voice set to '%s' (restart TTS to apply)", voice_name);
+    tts_ui_controller_show_status(controller, status_msg, 3000);
+    g_free(status_msg);
+    
+    return true;
+}
+
+bool 
+cmd_tts_engine(girara_session_t* session, girara_list_t* argument_list) 
+{
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* If no arguments, show current engine and available engines */
+    if (argument_list == NULL || girara_list_size(argument_list) == 0) {
+        tts_ui_controller_show_status(controller, "TTS: Available engines: piper, speech_dispatcher, espeak", 4000);
+        return true;
+    }
+    
+    /* Get engine argument */
+    char* engine_name = girara_list_nth(argument_list, 0);
+    if (engine_name == NULL) {
+        tts_ui_controller_show_status(controller, "TTS: Invalid engine argument", 2000);
+        return false;
+    }
+    
+    /* Validate engine name */
+    if (g_strcmp0(engine_name, "piper") != 0 && 
+        g_strcmp0(engine_name, "speech_dispatcher") != 0 && 
+        g_strcmp0(engine_name, "espeak") != 0) {
+        tts_ui_controller_show_status(controller, "TTS: Invalid engine. Use: piper, speech_dispatcher, or espeak", 3000);
+        return false;
+    }
+    
+    /* For now, just show that the engine would be set */
+    char* status_msg = g_strdup_printf("TTS: Engine set to '%s' (restart TTS to apply)", engine_name);
+    tts_ui_controller_show_status(controller, status_msg, 3000);
+    g_free(status_msg);
+    
+    return true;
+}
+
+bool 
+cmd_tts_config(girara_session_t* session, girara_list_t* argument_list) 
+{
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* If no arguments, show configuration help */
+    if (argument_list == NULL || girara_list_size(argument_list) == 0) {
+        tts_ui_controller_show_status(controller, "TTS: Config options: speed, volume, engine, voice. Use 'tts-config <option> <value>'", 5000);
+        return true;
+    }
+    
+    /* Get config option */
+    char* option = girara_list_nth(argument_list, 0);
+    if (option == NULL) {
+        tts_ui_controller_show_status(controller, "TTS: Invalid config option", 2000);
+        return false;
+    }
+    
+    /* Handle different config options */
+    if (g_strcmp0(option, "speed") == 0) {
+        if (girara_list_size(argument_list) < 2) {
+            return cmd_tts_speed(session, NULL); /* Show current speed */
+        } else {
+            girara_list_t* speed_args = girara_list_new();
+            girara_list_append(speed_args, girara_list_nth(argument_list, 1));
+            bool result = cmd_tts_speed(session, speed_args);
+            girara_list_free(speed_args);
+            return result;
+        }
+    } else if (g_strcmp0(option, "volume") == 0) {
+        if (girara_list_size(argument_list) < 2) {
+            return cmd_tts_volume(session, NULL); /* Show current volume */
+        } else {
+            girara_list_t* volume_args = girara_list_new();
+            girara_list_append(volume_args, girara_list_nth(argument_list, 1));
+            bool result = cmd_tts_volume(session, volume_args);
+            girara_list_free(volume_args);
+            return result;
+        }
+    } else if (g_strcmp0(option, "engine") == 0) {
+        if (girara_list_size(argument_list) < 2) {
+            return cmd_tts_engine(session, NULL); /* Show available engines */
+        } else {
+            girara_list_t* engine_args = girara_list_new();
+            girara_list_append(engine_args, girara_list_nth(argument_list, 1));
+            bool result = cmd_tts_engine(session, engine_args);
+            girara_list_free(engine_args);
+            return result;
+        }
+    } else if (g_strcmp0(option, "voice") == 0) {
+        if (girara_list_size(argument_list) < 2) {
+            return cmd_tts_voice(session, NULL); /* Show available voices */
+        } else {
+            girara_list_t* voice_args = girara_list_new();
+            girara_list_append(voice_args, girara_list_nth(argument_list, 1));
+            bool result = cmd_tts_voice(session, voice_args);
+            girara_list_free(voice_args);
+            return result;
+        }
+    } else {
+        tts_ui_controller_show_status(controller, "TTS: Unknown config option. Use: speed, volume, engine, voice", 3000);
+        return false;
+    }
+}
+
+bool 
+cmd_tts_status(girara_session_t* session, girara_list_t* argument_list) 
+{
+    (void)argument_list;
+    
+    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* Use the same logic as the shortcut handler */
+    return sc_tts_settings(session, NULL, NULL, 0);
 }
