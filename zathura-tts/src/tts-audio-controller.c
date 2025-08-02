@@ -37,6 +37,9 @@ tts_audio_controller_new(void)
     /* Initialize text */
     controller->current_text = NULL;
     
+    /* Initialize TTS engine */
+    controller->tts_engine = NULL;
+    
     /* Initialize callbacks */
     controller->state_change_callback = NULL;
     controller->callback_user_data = NULL;
@@ -446,4 +449,195 @@ tts_text_segment_free(tts_text_segment_t* segment)
     
     g_free(segment->text);
     g_free(segment);
+}/* P
+layback control functions */
+
+bool 
+tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* text) 
+{
+    if (controller == NULL || text == NULL || controller->tts_engine == NULL) {
+        return false;
+    }
+    
+    /* Include TTS engine header for function calls */
+    #include "tts-engine.h"
+    
+    tts_engine_t* engine = (tts_engine_t*)controller->tts_engine;
+    zathura_error_t error;
+    
+    g_mutex_lock(&controller->state_mutex);
+    
+    /* Update current text */
+    g_free(controller->current_text);
+    controller->current_text = g_strdup(text);
+    
+    /* Apply current speed and volume settings to engine */
+    tts_engine_config_t* config = tts_engine_config_new();
+    if (config != NULL) {
+        config->speed = controller->speed_multiplier;
+        config->volume = controller->volume_level;
+        config->voice_name = NULL; /* Use current voice */
+        config->pitch = 0;
+        
+        tts_engine_set_config(engine, config, &error);
+        tts_engine_config_free(config);
+    }
+    
+    g_mutex_unlock(&controller->state_mutex);
+    
+    /* Start speaking the text */
+    bool success = tts_engine_speak(engine, text, &error);
+    
+    if (success) {
+        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PLAYING);
+    } else {
+        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
+    }
+    
+    return success;
+}
+
+bool 
+tts_audio_controller_play_current_segment(tts_audio_controller_t* controller) 
+{
+    if (controller == NULL || controller->text_segments == NULL) {
+        return false;
+    }
+    
+    g_mutex_lock(&controller->state_mutex);
+    
+    /* Get current segment */
+    if (controller->current_segment < 0 || 
+        (size_t)controller->current_segment >= girara_list_size(controller->text_segments)) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false;
+    }
+    
+    tts_text_segment_t* segment = girara_list_nth(controller->text_segments, controller->current_segment);
+    if (segment == NULL || segment->text == NULL) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false;
+    }
+    
+    char* text_to_speak = g_strdup(segment->text);
+    g_mutex_unlock(&controller->state_mutex);
+    
+    /* Play the segment text */
+    bool success = tts_audio_controller_play_text(controller, text_to_speak);
+    g_free(text_to_speak);
+    
+    return success;
+}
+
+bool 
+tts_audio_controller_navigate_to_segment(tts_audio_controller_t* controller, int direction) 
+{
+    if (controller == NULL || controller->text_segments == NULL) {
+        return false;
+    }
+    
+    g_mutex_lock(&controller->state_mutex);
+    
+    size_t segment_count = girara_list_size(controller->text_segments);
+    if (segment_count == 0) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false;
+    }
+    
+    int new_segment = controller->current_segment + direction;
+    
+    /* Validate new segment index */
+    if (new_segment < 0 || (size_t)new_segment >= segment_count) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false;
+    }
+    
+    /* Get the target segment to update page number */
+    tts_text_segment_t* target_segment = girara_list_nth(controller->text_segments, new_segment);
+    if (target_segment == NULL) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false;
+    }
+    
+    /* Update position */
+    controller->current_segment = new_segment;
+    controller->current_page = target_segment->page_number;
+    
+    g_mutex_unlock(&controller->state_mutex);
+    
+    /* If currently playing, start playing the new segment */
+    if (tts_audio_controller_get_state(controller) == TTS_AUDIO_STATE_PLAYING) {
+        return tts_audio_controller_play_current_segment(controller);
+    }
+    
+    return true;
+}
+
+bool 
+tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, int page) 
+{
+    if (controller == NULL || controller->text_segments == NULL || page < 0) {
+        return false;
+    }
+    
+    g_mutex_lock(&controller->state_mutex);
+    
+    size_t segment_count = girara_list_size(controller->text_segments);
+    
+    /* Find first segment on the specified page */
+    int target_segment = -1;
+    for (size_t i = 0; i < segment_count; i++) {
+        tts_text_segment_t* segment = girara_list_nth(controller->text_segments, i);
+        if (segment != NULL && segment->page_number == page) {
+            target_segment = (int)i;
+            break;
+        }
+    }
+    
+    if (target_segment == -1) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false; /* No segments found on this page */
+    }
+    
+    /* Update position */
+    controller->current_segment = target_segment;
+    controller->current_page = page;
+    
+    g_mutex_unlock(&controller->state_mutex);
+    
+    /* If currently playing, start playing the new segment */
+    if (tts_audio_controller_get_state(controller) == TTS_AUDIO_STATE_PLAYING) {
+        return tts_audio_controller_play_current_segment(controller);
+    }
+    
+    return true;
+}
+
+/* Engine integration */
+
+void 
+tts_audio_controller_set_engine(tts_audio_controller_t* controller, void* engine) 
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    g_mutex_lock(&controller->state_mutex);
+    controller->tts_engine = engine;
+    g_mutex_unlock(&controller->state_mutex);
+}
+
+void* 
+tts_audio_controller_get_engine(tts_audio_controller_t* controller) 
+{
+    if (controller == NULL) {
+        return NULL;
+    }
+    
+    void* engine;
+    g_mutex_lock(&controller->state_mutex);
+    engine = controller->tts_engine;
+    g_mutex_unlock(&controller->state_mutex);
+    
+    return engine;
 }

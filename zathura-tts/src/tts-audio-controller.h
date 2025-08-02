@@ -49,6 +49,9 @@ struct tts_audio_controller_s {
     /* Current text being processed */
     char* current_text;
     
+    /* TTS Engine integration */
+    void* tts_engine;
+    
     /* Callbacks for state changes */
     void (*state_change_callback)(tts_audio_state_t old_state, tts_audio_state_t new_state, void* user_data);
     void* callback_user_data;
@@ -89,6 +92,16 @@ void tts_audio_controller_signal_state_change(tts_audio_controller_t* controller
 void tts_audio_controller_set_state_change_callback(tts_audio_controller_t* controller,
                                                    void (*callback)(tts_audio_state_t, tts_audio_state_t, void*),
                                                    void* user_data);
+
+/* Playback control functions */
+bool tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* text);
+bool tts_audio_controller_play_current_segment(tts_audio_controller_t* controller);
+bool tts_audio_controller_navigate_to_segment(tts_audio_controller_t* controller, int direction);
+bool tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, int page);
+
+/* Engine integration */
+void tts_audio_controller_set_engine(tts_audio_controller_t* controller, void* engine);
+void* tts_audio_controller_get_engine(tts_audio_controller_t* controller);
 
 /* Text segment helper functions */
 tts_text_segment_t* tts_text_segment_new(const char* text, int page, int segment_id);
