@@ -28,6 +28,15 @@ typedef struct {
     girara_list_t* available_voices; /**< List of available voices */
 } speech_dispatcher_engine_data_t;
 
+/* espeak-ng engine data structure */
+typedef struct {
+    GPid current_process;       /**< Current espeak-ng process PID */
+    bool is_speaking;          /**< Whether currently speaking */
+    bool is_paused;            /**< Whether currently paused */
+    char* current_voice;       /**< Currently selected voice */
+    girara_list_t* available_voices; /**< List of available voices */
+} espeak_engine_data_t;
+
 /* Forward declarations for engine-specific implementations */
 static bool piper_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error);
 static void piper_engine_cleanup(tts_engine_t* engine);
@@ -1144,46 +1153,366 @@ static girara_list_t* speech_dispatcher_engine_get_voices(tts_engine_t* engine, 
 }
 
 static bool espeak_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
-    /* TODO: Implement in task 4.4 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    /* Create espeak-ng engine data */
+    espeak_engine_data_t* espeak_data = g_malloc0(sizeof(espeak_engine_data_t));
+    if (espeak_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return false;
+    }
+    
+    espeak_data->current_process = 0;
+    espeak_data->is_speaking = false;
+    espeak_data->is_paused = false;
+    espeak_data->current_voice = NULL;
+    espeak_data->available_voices = NULL;
+    
+    /* Set default voice if specified in config */
+    if (config && config->voice_name) {
+        espeak_data->current_voice = g_strdup(config->voice_name);
+    }
+    
+    engine->engine_data = espeak_data;
+    engine->state = TTS_ENGINE_STATE_IDLE;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static void espeak_engine_cleanup(tts_engine_t* engine) {
-    /* TODO: Implement in task 4.4 */
+    if (engine == NULL || engine->engine_data == NULL) {
+        return;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* Stop any running process */
+    if (espeak_data->current_process > 0) {
+        kill(espeak_data->current_process, SIGTERM);
+        waitpid(espeak_data->current_process, NULL, 0);
+        espeak_data->current_process = 0;
+    }
+    
+    /* Free allocated memory */
+    g_free(espeak_data->current_voice);
+    
+    if (espeak_data->available_voices != NULL) {
+        girara_list_free(espeak_data->available_voices);
+    }
+    
+    g_free(espeak_data);
+    engine->engine_data = NULL;
 }
 
 static bool espeak_engine_speak(tts_engine_t* engine, const char* text, zathura_error_t* error) {
-    /* TODO: Implement in task 4.4 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || text == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* Stop any current speech */
+    if (espeak_data->current_process > 0) {
+        kill(espeak_data->current_process, SIGTERM);
+        waitpid(espeak_data->current_process, NULL, 0);
+        espeak_data->current_process = 0;
+    }
+    
+    /* Build espeak-ng command with configuration */
+    char* command;
+    GString* cmd_builder = g_string_new("espeak-ng");
+    
+    /* Add speed parameter */
+    if (engine->config.speed != 1.0f) {
+        int speed = (int)(engine->config.speed * 175); /* espeak default is 175 wpm */
+        speed = CLAMP(speed, 80, 450); /* espeak range */
+        g_string_append_printf(cmd_builder, " -s %d", speed);
+    }
+    
+    /* Add volume parameter */
+    if (engine->config.volume != 80) {
+        int volume = (int)(engine->config.volume * 2); /* espeak range 0-200 */
+        volume = CLAMP(volume, 0, 200);
+        g_string_append_printf(cmd_builder, " -a %d", volume);
+    }
+    
+    /* Add pitch parameter */
+    if (engine->config.pitch != 0) {
+        int pitch = 50 + engine->config.pitch; /* espeak default is 50 */
+        pitch = CLAMP(pitch, 0, 99);
+        g_string_append_printf(cmd_builder, " -p %d", pitch);
+    }
+    
+    /* Add voice parameter if specified */
+    if (espeak_data->current_voice) {
+        g_string_append_printf(cmd_builder, " -v '%s'", espeak_data->current_voice);
+    }
+    
+    /* Add the text to speak */
+    g_string_append_printf(cmd_builder, " '%s'", text);
+    
+    command = g_string_free(cmd_builder, FALSE);
+    
+    if (command == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return false;
+    }
+    
+    /* Execute espeak-ng command asynchronously */
+    GPid child_pid;
+    gchar** argv;
+    GError* g_error = NULL;
+    
+    if (!g_shell_parse_argv(command, NULL, &argv, &g_error)) {
+        g_free(command);
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        return false;
+    }
+    
+    bool success = g_spawn_async(NULL, argv, NULL, 
+                                G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
+                                NULL, NULL, &child_pid, &g_error);
+    
+    g_strfreev(argv);
+    g_free(command);
+    
+    if (!success) {
+        if (g_error) {
+            g_error_free(g_error);
+        }
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        return false;
+    }
+    
+    espeak_data->current_process = child_pid;
+    espeak_data->is_speaking = true;
+    espeak_data->is_paused = false;
+    engine->state = TTS_ENGINE_STATE_SPEAKING;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static bool espeak_engine_pause(tts_engine_t* engine, bool pause, zathura_error_t* error) {
-    /* TODO: Implement in task 4.4 */
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* espeak-ng doesn't support pause/resume directly, so we simulate it */
+    if (espeak_data->current_process > 0) {
+        if (pause) {
+            /* Send SIGSTOP to pause the process */
+            if (kill(espeak_data->current_process, SIGSTOP) == 0) {
+                espeak_data->is_paused = true;
+                engine->state = TTS_ENGINE_STATE_PAUSED;
+                if (error) *error = ZATHURA_ERROR_OK;
+                return true;
+            }
+        } else {
+            /* Send SIGCONT to resume the process */
+            if (kill(espeak_data->current_process, SIGCONT) == 0) {
+                espeak_data->is_paused = false;
+                engine->state = TTS_ENGINE_STATE_SPEAKING;
+                if (error) *error = ZATHURA_ERROR_OK;
+                return true;
+            }
+        }
+    }
+    
     if (error) *error = ZATHURA_ERROR_UNKNOWN;
     return false;
 }
 
 static bool espeak_engine_stop(tts_engine_t* engine, zathura_error_t* error) {
-    /* TODO: Implement in task 4.4 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* Stop any running process */
+    if (espeak_data->current_process > 0) {
+        if (kill(espeak_data->current_process, SIGTERM) == 0) {
+            waitpid(espeak_data->current_process, NULL, 0);
+            espeak_data->current_process = 0;
+            espeak_data->is_speaking = false;
+            espeak_data->is_paused = false;
+            engine->state = TTS_ENGINE_STATE_IDLE;
+            
+            if (error) *error = ZATHURA_ERROR_OK;
+            return true;
+        }
+    }
+    
+    /* If no process was running, still consider it successful */
+    espeak_data->is_speaking = false;
+    espeak_data->is_paused = false;
+    engine->state = TTS_ENGINE_STATE_IDLE;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static bool espeak_engine_set_config(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
-    /* TODO: Implement in task 4.4 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || config == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* Update engine configuration */
+    g_free(engine->config.voice_name);
+    engine->config = *config;
+    engine->config.voice_name = config->voice_name ? g_strdup(config->voice_name) : NULL;
+    
+    /* Update current voice if changed */
+    if (config->voice_name) {
+        g_free(espeak_data->current_voice);
+        espeak_data->current_voice = g_strdup(config->voice_name);
+    }
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static tts_engine_state_t espeak_engine_get_state(tts_engine_t* engine) {
-    /* TODO: Implement in task 4.4 */
-    return TTS_ENGINE_STATE_ERROR;
+    if (engine == NULL || engine->engine_data == NULL) {
+        return TTS_ENGINE_STATE_ERROR;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* Check if process is still running */
+    if (espeak_data->current_process > 0) {
+        int status;
+        pid_t result = waitpid(espeak_data->current_process, &status, WNOHANG);
+        
+        if (result == 0) {
+            /* Process is still running */
+            return espeak_data->is_paused ? TTS_ENGINE_STATE_PAUSED : TTS_ENGINE_STATE_SPEAKING;
+        } else {
+            /* Process has finished */
+            espeak_data->current_process = 0;
+            espeak_data->is_speaking = false;
+            espeak_data->is_paused = false;
+            engine->state = TTS_ENGINE_STATE_IDLE;
+            return TTS_ENGINE_STATE_IDLE;
+        }
+    }
+    
+    return TTS_ENGINE_STATE_IDLE;
 }
 
 static girara_list_t* espeak_engine_get_voices(tts_engine_t* engine, zathura_error_t* error) {
-    /* TODO: Implement in task 4.4 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return NULL;
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return NULL;
+    }
+    
+    espeak_engine_data_t* espeak_data = (espeak_engine_data_t*)engine->engine_data;
+    
+    /* Return cached voices if available */
+    if (espeak_data->available_voices != NULL) {
+        if (error) *error = ZATHURA_ERROR_OK;
+        return espeak_data->available_voices;
+    }
+    
+    /* Create voices list */
+    girara_list_t* voices = girara_list_new();
+    if (voices == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return NULL;
+    }
+    
+    girara_list_set_free_function(voices, (girara_free_function_t)tts_voice_info_free);
+    
+    /* Get available voices from espeak-ng */
+    FILE* fp = popen("espeak-ng --voices 2>/dev/null || espeak --voices 2>/dev/null", "r");
+    if (fp != NULL) {
+        char line[512];
+        bool first_line = true;
+        
+        while (fgets(line, sizeof(line), fp) != NULL) {
+            /* Skip header line */
+            if (first_line) {
+                first_line = false;
+                continue;
+            }
+            
+            /* Parse voice line format: "Pty Language Age/Gender VoiceName File Other Languages" */
+            char* saveptr;
+            char* priority = strtok_r(line, " \t", &saveptr);
+            char* language = strtok_r(NULL, " \t", &saveptr);
+            char* age_gender = strtok_r(NULL, " \t", &saveptr);
+            char* voice_name = strtok_r(NULL, " \t", &saveptr);
+            
+            if (voice_name != NULL && language != NULL) {
+                /* Extract gender from age/gender field */
+                char* gender = "neutral";
+                if (age_gender && strstr(age_gender, "M")) {
+                    gender = "male";
+                } else if (age_gender && strstr(age_gender, "F")) {
+                    gender = "female";
+                }
+                
+                /* Create voice info */
+                tts_voice_info_t* voice_info = tts_voice_info_new(
+                    voice_name,
+                    language,
+                    gender,
+                    60  /* Basic quality for espeak-ng */
+                );
+                
+                if (voice_info != NULL) {
+                    girara_list_append(voices, voice_info);
+                }
+            }
+        }
+        pclose(fp);
+    }
+    
+    /* If no voices found, add default voices */
+    if (girara_list_size(voices) == 0) {
+        /* Add common espeak-ng voices */
+        const char* default_voices[][3] = {
+            {"en", "en", "neutral"},
+            {"en-us", "en-US", "neutral"},
+            {"en-gb", "en-GB", "neutral"},
+            {"de", "de", "neutral"},
+            {"fr", "fr", "neutral"},
+            {"es", "es", "neutral"},
+            {"it", "it", "neutral"},
+            {"pt", "pt", "neutral"},
+            {NULL, NULL, NULL}
+        };
+        
+        for (int i = 0; default_voices[i][0] != NULL; i++) {
+            tts_voice_info_t* voice_info = tts_voice_info_new(
+                default_voices[i][0],
+                default_voices[i][1],
+                default_voices[i][2],
+                55  /* Basic quality */
+            );
+            
+            if (voice_info != NULL) {
+                girara_list_append(voices, voice_info);
+            }
+        }
+    }
+    
+    /* Cache the voices list */
+    espeak_data->available_voices = voices;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return voices;
 }
