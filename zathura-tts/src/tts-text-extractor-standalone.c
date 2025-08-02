@@ -1,31 +1,11 @@
-/* TTS Text Extractor Implementation
- * Extracts text from PDF pages for TTS reading
+/* TTS Text Extractor Implementation - Standalone Functions Only
+ * Contains functions that don't depend on Zathura runtime
  */
 
 #include "tts-text-extractor.h"
 #include <string.h>
 #include <ctype.h>
 #include <regex.h>
-
-/* Include Zathura headers */
-#include <zathura/page.h>
-#include <zathura/types.h>
-
-/* Helper function to create a full page rectangle */
-static zathura_rectangle_t get_full_page_rectangle(zathura_page_t* page) {
-    zathura_rectangle_t rect = {0};
-    
-    if (page == NULL) {
-        return rect;
-    }
-    
-    rect.x1 = 0.0;
-    rect.y1 = 0.0;
-    rect.x2 = zathura_page_get_width(page);
-    rect.y2 = zathura_page_get_height(page);
-    
-    return rect;
-}
 
 /* Helper function to clean up extracted text */
 static char* clean_extracted_text(const char* raw_text) {
@@ -64,37 +44,6 @@ static char* clean_extracted_text(const char* raw_text) {
     
     cleaned[write_pos] = '\0';
     return cleaned;
-}
-
-char* tts_extract_page_text(zathura_page_t* page, zathura_error_t* error) {
-    if (page == NULL) {
-        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
-        return NULL;
-    }
-    
-    /* Get the full page rectangle */
-    zathura_rectangle_t full_page = get_full_page_rectangle(page);
-    
-    /* Extract text from the entire page */
-    zathura_error_t local_error = ZATHURA_ERROR_OK;
-    char* raw_text = zathura_page_get_text(page, full_page, &local_error);
-    
-    if (local_error != ZATHURA_ERROR_OK) {
-        if (error) *error = local_error;
-        return NULL;
-    }
-    
-    if (raw_text == NULL) {
-        if (error) *error = ZATHURA_ERROR_OK; /* No text is not an error */
-        return NULL;
-    }
-    
-    /* Clean up the extracted text */
-    char* cleaned_text = clean_extracted_text(raw_text);
-    g_free(raw_text);
-    
-    if (error) *error = ZATHURA_ERROR_OK;
-    return cleaned_text;
 }
 
 tts_text_segment_t* tts_text_segment_new(const char* text, zathura_rectangle_t bounds, 
@@ -216,81 +165,6 @@ girara_list_t* tts_segment_text_into_sentences(const char* text, zathura_error_t
     return sentences;
 }
 
-girara_list_t* tts_extract_text_segments(zathura_page_t* page, zathura_error_t* error) {
-    if (page == NULL) {
-        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
-        return NULL;
-    }
-    
-    /* Extract the full page text first */
-    zathura_error_t local_error = ZATHURA_ERROR_OK;
-    char* page_text = tts_extract_page_text(page, &local_error);
-    
-    if (local_error != ZATHURA_ERROR_OK) {
-        if (error) *error = local_error;
-        return NULL;
-    }
-    
-    if (page_text == NULL) {
-        if (error) *error = ZATHURA_ERROR_OK;
-        return NULL;
-    }
-    
-    /* Create segments list */
-    girara_list_t* segments = girara_list_new();
-    if (segments == NULL) {
-        g_free(page_text);
-        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
-        return NULL;
-    }
-    
-    girara_list_set_free_function(segments, (girara_free_function_t)tts_text_segment_free);
-    
-    /* Segment the text into sentences */
-    girara_list_t* sentences = tts_segment_text_into_sentences(page_text, &local_error);
-    g_free(page_text);
-    
-    if (local_error != ZATHURA_ERROR_OK || sentences == NULL) {
-        girara_list_free(segments);
-        if (error) *error = local_error;
-        return NULL;
-    }
-    
-    /* Convert sentences to text segments */
-    zathura_rectangle_t page_bounds = get_full_page_rectangle(page);
-    int page_number = zathura_page_get_index(page);
-    int segment_id = 0;
-    
-    girara_list_iterator_t* iter = girara_list_iterator(sentences);
-    while (iter != NULL) {
-        char* sentence = (char*)girara_list_iterator_data(iter);
-        if (sentence != NULL) {
-            /* Determine content type */
-            tts_content_type_t content_type = TTS_CONTENT_NORMAL;
-            if (tts_text_contains_math(sentence)) {
-                content_type = TTS_CONTENT_FORMULA;
-            } else if (tts_text_is_table_content(sentence)) {
-                content_type = TTS_CONTENT_TABLE;
-            } else if (tts_text_contains_links(sentence)) {
-                content_type = TTS_CONTENT_LINK;
-            }
-            
-            /* Create text segment */
-            tts_text_segment_t* segment = tts_text_segment_new(sentence, page_bounds, 
-                                                              page_number, segment_id++, content_type);
-            if (segment != NULL) {
-                girara_list_append(segments, segment);
-            }
-        }
-        iter = girara_list_iterator_next(iter);
-    }
-    
-    girara_list_free(sentences);
-    
-    if (error) *error = ZATHURA_ERROR_OK;
-    return segments;
-}
-
 bool tts_text_contains_math(const char* text) {
     if (text == NULL) {
         return false;
@@ -337,30 +211,57 @@ bool tts_text_is_table_content(const char* text) {
     int pipe_count = 0;
     int number_count = 0;
     int word_count = 0;
+    int long_space_sequences = 0; /* Sequences of 3+ spaces */
     
     const char* p = text;
     bool in_word = false;
+    int consecutive_spaces = 0;
     
     while (*p) {
         if (*p == '\t') {
             tab_count++;
+            in_word = false;
+            consecutive_spaces = 0;
         } else if (*p == '|') {
             pipe_count++;
+            in_word = false;
+            consecutive_spaces = 0;
         } else if (isdigit(*p)) {
             number_count++;
+            if (!in_word) {
+                word_count++;
+                in_word = true;
+            }
+            consecutive_spaces = 0;
         } else if (isalpha(*p)) {
             if (!in_word) {
                 word_count++;
                 in_word = true;
             }
+            consecutive_spaces = 0;
+        } else if (*p == ' ') {
+            if (in_word) {
+                in_word = false;
+            }
+            consecutive_spaces++;
+            if (consecutive_spaces >= 3) {
+                long_space_sequences++;
+                consecutive_spaces = 0; /* Reset to avoid double counting */
+            }
         } else if (isspace(*p)) {
+            if (in_word) {
+                in_word = false;
+            }
+            consecutive_spaces = 0;
+        } else {
             in_word = false;
+            consecutive_spaces = 0;
         }
         p++;
     }
     
-    /* Heuristic: likely table if has multiple tabs/pipes and mix of numbers/words */
-    return (tab_count >= 2 || pipe_count >= 2) && number_count > 0 && word_count > 0;
+    /* Heuristic: likely table if has explicit separators (tabs/pipes) or multiple long space sequences */
+    return (tab_count >= 1 || pipe_count >= 2 || long_space_sequences >= 2) && word_count >= 2;
 }
 
 bool tts_text_contains_links(const char* text) {
@@ -479,7 +380,7 @@ char* tts_process_table_content(const char* text, zathura_error_t* error) {
     
     /* Create a processed version with table structure announcements */
     size_t original_len = strlen(text);
-    size_t buffer_size = original_len * 2; /* Allow for expansion */
+    size_t buffer_size = original_len * 3; /* Allow for more expansion */
     char* processed = g_malloc(buffer_size);
     if (processed == NULL) {
         if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
@@ -499,7 +400,6 @@ char* tts_process_table_content(const char* text, zathura_error_t* error) {
         remaining -= start_len;
     }
     
-    int column = 0;
     bool first_column = true;
     
     while (*src && remaining > 0) {
@@ -508,22 +408,22 @@ char* tts_process_table_content(const char* text, zathura_error_t* error) {
             const char* separator = first_column ? "" : ", next column: ";
             size_t sep_len = strlen(separator);
             if (sep_len < remaining) {
-                strcpy(dst, separator);
+                strncpy(dst, separator, sep_len);
                 dst += sep_len;
                 remaining -= sep_len;
-                first_column = false;
             }
+            first_column = false;
             src++;
         } else if (*src == '\n') {
             /* Announce row separator */
             const char* row_sep = ", next row: ";
             size_t row_len = strlen(row_sep);
             if (row_len < remaining) {
-                strcpy(dst, row_sep);
+                strncpy(dst, row_sep, row_len);
                 dst += row_len;
                 remaining -= row_len;
-                first_column = true;
             }
+            first_column = true;
             src++;
         } else {
             *dst++ = *src++;
@@ -615,103 +515,6 @@ char* tts_process_link_content(const char* text, zathura_error_t* error) {
     
     if (error) *error = ZATHURA_ERROR_OK;
     return processed;
-}
-
-girara_list_t* tts_extract_page_links(zathura_page_t* page, zathura_error_t* error) {
-    if (page == NULL) {
-        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
-        return NULL;
-    }
-    
-    /* Get links from the page using Zathura's API */
-    zathura_error_t local_error = ZATHURA_ERROR_OK;
-    girara_list_t* page_links = zathura_page_links_get(page, &local_error);
-    
-    if (local_error != ZATHURA_ERROR_OK) {
-        if (error) *error = local_error;
-        return NULL;
-    }
-    
-    if (page_links == NULL) {
-        if (error) *error = ZATHURA_ERROR_OK;
-        return NULL;
-    }
-    
-    /* Create list for TTS-friendly link descriptions */
-    girara_list_t* link_descriptions = girara_list_new();
-    if (link_descriptions == NULL) {
-        girara_list_free(page_links);
-        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
-        return NULL;
-    }
-    
-    girara_list_set_free_function(link_descriptions, g_free);
-    
-    /* Process each link */
-    girara_list_iterator_t* iter = girara_list_iterator(page_links);
-    while (iter != NULL) {
-        zathura_link_t* link = (zathura_link_t*)girara_list_iterator_data(iter);
-        if (link != NULL) {
-            /* Get link type and target information */
-            zathura_link_type_t link_type = zathura_link_get_type(link);
-            zathura_link_target_t target = zathura_link_get_target(link);
-            
-            /* Create TTS-friendly description based on link type */
-            char* link_desc = NULL;
-            switch (link_type) {
-                case ZATHURA_LINK_URI:
-                    if (target.value != NULL) {
-                        link_desc = g_strdup_printf("External link to %s", target.value);
-                    } else {
-                        link_desc = g_strdup("External link");
-                    }
-                    break;
-                    
-                case ZATHURA_LINK_GOTO_DEST:
-                    link_desc = g_strdup_printf("Internal link to page %u", target.page_number);
-                    break;
-                    
-                case ZATHURA_LINK_GOTO_REMOTE:
-                    if (target.value != NULL) {
-                        link_desc = g_strdup_printf("Link to external document %s, page %u", 
-                                                  target.value, target.page_number);
-                    } else {
-                        link_desc = g_strdup_printf("Link to external document, page %u", target.page_number);
-                    }
-                    break;
-                    
-                case ZATHURA_LINK_LAUNCH:
-                    if (target.value != NULL) {
-                        link_desc = g_strdup_printf("Launch link to %s", target.value);
-                    } else {
-                        link_desc = g_strdup("Launch link");
-                    }
-                    break;
-                    
-                case ZATHURA_LINK_NAMED:
-                    if (target.value != NULL) {
-                        link_desc = g_strdup_printf("Named link %s", target.value);
-                    } else {
-                        link_desc = g_strdup("Named link");
-                    }
-                    break;
-                    
-                default:
-                    link_desc = g_strdup("Link detected");
-                    break;
-            }
-            
-            if (link_desc != NULL) {
-                girara_list_append(link_descriptions, link_desc);
-            }
-        }
-        iter = girara_list_iterator_next(iter);
-    }
-    
-    girara_list_free(page_links);
-    
-    if (error) *error = ZATHURA_ERROR_OK;
-    return link_descriptions;
 }
 
 tts_content_type_t tts_detect_content_type(const char* text) {
