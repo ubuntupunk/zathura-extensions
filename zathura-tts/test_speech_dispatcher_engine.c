@@ -30,7 +30,7 @@ int main() {
     printf("Testing Speech Dispatcher engine initialization:\n");
     tts_engine_config_t* config = tts_engine_config_new();
     assert(config != NULL);
-    config->voice_name = g_strdup("female1");
+    config->voice_name = g_strdup("male1");
     config->speed = 1.2f;
     config->volume = 90;
     config->pitch = 10;
@@ -91,12 +91,12 @@ int main() {
         printf("Testing Speech Dispatcher speech functionality:\n");
         
         /* Test speak function */
-        bool speak_result = tts_engine_speak(engine, "Hello, this is a test of Speech Dispatcher.", &error);
+        bool speak_result = tts_engine_speak(engine, "Hello, this is a Speech Dispatcher test.", &error);
         if (speak_result) {
             printf("✓ Speech initiated successfully\n");
             
             /* Wait a moment and check state */
-            usleep(500000); /* 500ms */
+            usleep(100000); /* 100ms */
             state = tts_engine_get_state(engine);
             printf("  State after speak: %s\n", 
                    state == TTS_ENGINE_STATE_SPEAKING ? "SPEAKING" :
@@ -106,9 +106,9 @@ int main() {
             bool pause_result = tts_engine_pause(engine, true, &error);
             if (pause_result) {
                 printf("✓ Speech paused successfully\n");
-                usleep(1000000); /* 1 second */
+                usleep(500000); /* 500ms */
                 
-                /* Test resume function */
+                /* Test resume */
                 bool resume_result = tts_engine_pause(engine, false, &error);
                 if (resume_result) {
                     printf("✓ Speech resumed successfully\n");
