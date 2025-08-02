@@ -19,39 +19,39 @@
     - Add error handling for plugin loading failures
     - _Requirements: 5.1, 5.4_
 
-- [ ] 3. Implement text extraction system
-  - [ ] 3.1 Create text extraction interface
+- [-] 3. Implement text extraction system
+  - [x] 3.1 Create text extraction interface
     - Implement `tts_extract_page_text()` using Zathura's page API
     - Create text segmentation logic for sentences and paragraphs
     - Add support for reading order preservation
     - _Requirements: 1.1, 1.4_
 
-  - [ ] 3.2 Add special content handling
+  - [x] 3.2 Add special content handling
     - Implement detection and handling of mathematical formulas
     - Add table structure announcement functionality
     - Create hyperlink text extraction and announcement
     - _Requirements: 4.1, 4.2, 4.4_
 
 - [ ] 4. Implement TTS engine interface
-  - [ ] 4.1 Create abstract TTS engine interface
+  - [x] 4.1 Create abstract TTS engine interface
     - Define common TTS engine interface structure
     - Implement engine detection and selection logic
     - Create engine initialization and cleanup functions
     - _Requirements: 6.1, 6.3_
 
-  - [ ] 4.2 Implement Piper-TTS engine support
+  - [x] 4.2 Implement Piper-TTS engine support
     - Create Piper-TTS wrapper using Python subprocess calls
     - Implement voice selection and configuration for Piper
     - Add audio output handling for Piper-generated speech
     - _Requirements: 6.1, 6.2_
 
-  - [ ] 4.3 Implement Speech Dispatcher fallback
+  - [x] 4.3 Implement Speech Dispatcher fallback
     - Create Speech Dispatcher interface using libspeechd
     - Implement voice and rate configuration
     - Add error handling and fallback logic
     - _Requirements: 6.3, 6.4_
 
-  - [ ] 4.4 Implement espeak-ng fallback
+  - [x] 4.4 Implement espeak-ng fallback
     - Create espeak-ng interface using system calls
     - Add basic voice and speed configuration
     - Implement final fallback error handling
