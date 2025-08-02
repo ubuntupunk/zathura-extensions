@@ -703,4 +703,224 @@ sc_tts_settings(girara_session_t* session, girara_argument_t* argument, girara_e
     }
     
     return true;
+}/
+* Visual feedback functions */
+
+void 
+tts_ui_controller_update_progress(tts_ui_controller_t* controller, int current_segment, int total_segments) 
+{
+    if (controller == NULL || total_segments <= 0) {
+        return;
+    }
+    
+    /* Calculate progress percentage */
+    float progress = (float)(current_segment + 1) / (float)total_segments * 100.0f;
+    
+    /* Create progress status message */
+    char* progress_msg = g_strdup_printf("TTS: Reading segment %d/%d (%.1f%%)", 
+                                        current_segment + 1, total_segments, progress);
+    
+    tts_ui_controller_show_status(controller, progress_msg, 1500);
+    g_free(progress_msg);
+}
+
+void 
+tts_ui_controller_show_tts_indicator(tts_ui_controller_t* controller, bool active) 
+{
+    if (controller == NULL || controller->session == NULL) {
+        return;
+    }
+    
+    /* Update TTS active state */
+    controller->tts_active = active;
+    
+    /* Show indicator in status bar */
+    if (active) {
+        tts_ui_controller_show_status(controller, "TTS: ♪ Active", 0); /* No timeout for persistent indicator */
+    } else {
+        tts_ui_controller_clear_status(controller);
+    }
+}
+
+bool 
+tts_ui_controller_highlight_current_text(tts_ui_controller_t* controller, const char* text) 
+{
+    if (controller == NULL || text == NULL || controller->zathura == NULL) {
+        return false;
+    }
+    
+    /* Note: This is a simplified implementation. Full text highlighting would require
+     * deeper integration with Zathura's page rendering system, similar to how search
+     * results are highlighted. For now, we provide visual feedback through status messages.
+     */
+    
+    /* Get current document and page */
+    zathura_document_t* document = zathura_get_document(controller->zathura);
+    if (document == NULL) {
+        return false;
+    }
+    
+    unsigned int current_page_number = zathura_document_get_current_page_number(document);
+    zathura_page_t* page = zathura_document_get_page(document, current_page_number);
+    if (page == NULL) {
+        return false;
+    }
+    
+    /* For now, show the current text being read in the status bar */
+    /* This provides immediate visual feedback about what's being spoken */
+    size_t text_len = strlen(text);
+    char* display_text;
+    
+    if (text_len > 50) {
+        /* Truncate long text for display */
+        display_text = g_strdup_printf("TTS: \"%.47s...\"", text);
+    } else {
+        display_text = g_strdup_printf("TTS: \"%s\"", text);
+    }
+    
+    tts_ui_controller_show_status(controller, display_text, 3000);
+    g_free(display_text);
+    
+    /* TODO: Implement actual text highlighting on the page
+     * This would require:
+     * 1. Finding the text position on the page using text extraction
+     * 2. Creating highlight rectangles similar to search results
+     * 3. Setting page widget properties to draw the highlights
+     * 4. Using a different color scheme for TTS highlights vs search highlights
+     */
+    
+    return true;
+}
+
+/* Enhanced status display with TTS-specific formatting */
+
+static void
+tts_ui_controller_show_enhanced_status(tts_ui_controller_t* controller, 
+                                      const char* action, 
+                                      const char* details, 
+                                      int timeout_ms)
+{
+    if (controller == NULL || action == NULL) {
+        return;
+    }
+    
+    char* status_msg;
+    if (details != NULL) {
+        status_msg = g_strdup_printf("TTS %s: %s", action, details);
+    } else {
+        status_msg = g_strdup_printf("TTS %s", action);
+    }
+    
+    tts_ui_controller_show_status(controller, status_msg, timeout_ms);
+    g_free(status_msg);
+}
+
+/* Progress tracking for long documents */
+
+static void
+tts_ui_controller_show_document_progress(tts_ui_controller_t* controller)
+{
+    if (controller == NULL || controller->audio_controller == NULL) {
+        return;
+    }
+    
+    int current_page = tts_audio_controller_get_current_page(controller->audio_controller);
+    int current_segment = tts_audio_controller_get_current_segment(controller->audio_controller);
+    
+    if (current_page >= 0) {
+        /* Get total pages from document */
+        zathura_document_t* document = zathura_get_document(controller->zathura);
+        if (document != NULL) {
+            unsigned int total_pages = zathura_document_get_number_of_pages(document);
+            
+            char* progress_msg = g_strdup_printf("Page %d/%d, Segment %d", 
+                                                current_page + 1, total_pages, current_segment + 1);
+            tts_ui_controller_show_enhanced_status(controller, "Reading", progress_msg, 2000);
+            g_free(progress_msg);
+        }
+    }
+}
+
+/* Visual state indicators */
+
+static void
+tts_ui_controller_update_visual_state(tts_ui_controller_t* controller, tts_audio_state_t state)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    const char* state_icon;
+    const char* state_text;
+    
+    switch (state) {
+        case TTS_AUDIO_STATE_PLAYING:
+            state_icon = "▶";
+            state_text = "Playing";
+            break;
+        case TTS_AUDIO_STATE_PAUSED:
+            state_icon = "⏸";
+            state_text = "Paused";
+            break;
+        case TTS_AUDIO_STATE_STOPPED:
+            state_icon = "⏹";
+            state_text = "Stopped";
+            break;
+        case TTS_AUDIO_STATE_ERROR:
+            state_icon = "⚠";
+            state_text = "Error";
+            break;
+        default:
+            state_icon = "?";
+            state_text = "Unknown";
+            break;
+    }
+    
+    char* status_msg = g_strdup_printf("TTS %s %s", state_icon, state_text);
+    
+    /* Show persistent indicator for active states, temporary for stopped/error */
+    int timeout = (state == TTS_AUDIO_STATE_STOPPED || state == TTS_AUDIO_STATE_ERROR) ? 2000 : 0;
+    tts_ui_controller_show_status(controller, status_msg, timeout);
+    
+    g_free(status_msg);
+}
+
+/* Callback for audio state changes to update visual feedback */
+
+static void
+tts_audio_state_change_callback(tts_audio_state_t old_state, tts_audio_state_t new_state, void* user_data)
+{
+    tts_ui_controller_t* controller = (tts_ui_controller_t*)user_data;
+    if (controller == NULL) {
+        return;
+    }
+    
+    /* Update visual state indicator */
+    tts_ui_controller_update_visual_state(controller, new_state);
+    
+    /* Show document progress for active states */
+    if (new_state == TTS_AUDIO_STATE_PLAYING) {
+        tts_ui_controller_show_document_progress(controller);
+    }
+    
+    /* Update TTS active indicator */
+    bool is_active = (new_state == TTS_AUDIO_STATE_PLAYING || new_state == TTS_AUDIO_STATE_PAUSED);
+    controller->tts_active = is_active;
+}
+
+/* Initialize visual feedback system */
+
+bool
+tts_ui_controller_init_visual_feedback(tts_ui_controller_t* controller)
+{
+    if (controller == NULL || controller->audio_controller == NULL) {
+        return false;
+    }
+    
+    /* Set up audio state change callback for visual feedback */
+    tts_audio_controller_set_state_change_callback(controller->audio_controller,
+                                                   tts_audio_state_change_callback,
+                                                   controller);
+    
+    return true;
 }

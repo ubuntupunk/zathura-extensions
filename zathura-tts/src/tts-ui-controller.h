@@ -59,6 +59,7 @@ typedef struct {
 /* UI controller management functions */
 tts_ui_controller_t* tts_ui_controller_new(zathura_t* zathura, tts_audio_controller_t* audio_controller);
 void tts_ui_controller_free(tts_ui_controller_t* controller);
+bool tts_ui_controller_init_visual_feedback(tts_ui_controller_t* controller);
 
 /* Shortcut registration functions */
 bool tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller);
@@ -77,9 +78,12 @@ bool sc_tts_volume_up(girara_session_t* session, girara_argument_t* argument, gi
 bool sc_tts_volume_down(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 bool sc_tts_settings(girara_session_t* session, girara_argument_t* argument, girara_event_t* event, unsigned int t);
 
-/* Status display functions */
+/* Visual feedback functions */
 void tts_ui_controller_show_status(tts_ui_controller_t* controller, const char* message, int timeout_ms);
 void tts_ui_controller_clear_status(tts_ui_controller_t* controller);
+void tts_ui_controller_update_progress(tts_ui_controller_t* controller, int current_segment, int total_segments);
+void tts_ui_controller_show_tts_indicator(tts_ui_controller_t* controller, bool active);
+bool tts_ui_controller_highlight_current_text(tts_ui_controller_t* controller, const char* text);
 
 /* Helper functions */
 tts_ui_controller_t* tts_ui_controller_get_from_session(girara_session_t* session);
