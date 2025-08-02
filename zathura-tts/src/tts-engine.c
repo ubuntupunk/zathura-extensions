@@ -19,6 +19,15 @@ typedef struct {
     girara_list_t* available_voices; /**< List of available voices */
 } piper_engine_data_t;
 
+/* Speech Dispatcher engine data structure */
+typedef struct {
+    GPid current_process;       /**< Current spd-say process PID */
+    bool is_speaking;          /**< Whether currently speaking */
+    bool is_paused;            /**< Whether currently paused */
+    char* current_voice;       /**< Currently selected voice */
+    girara_list_t* available_voices; /**< List of available voices */
+} speech_dispatcher_engine_data_t;
+
 /* Forward declarations for engine-specific implementations */
 static bool piper_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error);
 static void piper_engine_cleanup(tts_engine_t* engine);
@@ -793,48 +802,345 @@ static girara_list_t* piper_engine_get_voices(tts_engine_t* engine, zathura_erro
 }
 
 static bool speech_dispatcher_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
-    /* TODO: Implement in task 4.3 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    /* Create Speech Dispatcher engine data */
+    speech_dispatcher_engine_data_t* spd_data = g_malloc0(sizeof(speech_dispatcher_engine_data_t));
+    if (spd_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return false;
+    }
+    
+    spd_data->current_process = 0;
+    spd_data->is_speaking = false;
+    spd_data->is_paused = false;
+    spd_data->current_voice = NULL;
+    spd_data->available_voices = NULL;
+    
+    /* Set default voice if specified in config */
+    if (config && config->voice_name) {
+        spd_data->current_voice = g_strdup(config->voice_name);
+    }
+    
+    engine->engine_data = spd_data;
+    engine->state = TTS_ENGINE_STATE_IDLE;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static void speech_dispatcher_engine_cleanup(tts_engine_t* engine) {
-    /* TODO: Implement in task 4.3 */
+    if (engine == NULL || engine->engine_data == NULL) {
+        return;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Stop any running process */
+    if (spd_data->current_process > 0) {
+        kill(spd_data->current_process, SIGTERM);
+        waitpid(spd_data->current_process, NULL, 0);
+        spd_data->current_process = 0;
+    }
+    
+    /* Free allocated memory */
+    g_free(spd_data->current_voice);
+    
+    if (spd_data->available_voices != NULL) {
+        girara_list_free(spd_data->available_voices);
+    }
+    
+    g_free(spd_data);
+    engine->engine_data = NULL;
 }
 
 static bool speech_dispatcher_engine_speak(tts_engine_t* engine, const char* text, zathura_error_t* error) {
-    /* TODO: Implement in task 4.3 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || text == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Stop any current speech */
+    if (spd_data->current_process > 0) {
+        kill(spd_data->current_process, SIGTERM);
+        waitpid(spd_data->current_process, NULL, 0);
+        spd_data->current_process = 0;
+    }
+    
+    /* Build spd-say command with configuration */
+    char* command;
+    GString* cmd_builder = g_string_new("spd-say");
+    
+    /* Add rate (speed) parameter */
+    if (engine->config.speed != 1.0f) {
+        int rate = (int)((engine->config.speed - 1.0f) * 100);
+        rate = CLAMP(rate, -100, 100);
+        g_string_append_printf(cmd_builder, " --rate %d", rate);
+    }
+    
+    /* Add volume parameter */
+    if (engine->config.volume != 80) {
+        int volume = (int)((engine->config.volume / 100.0f - 0.8f) * 125);
+        volume = CLAMP(volume, -100, 100);
+        g_string_append_printf(cmd_builder, " --volume %d", volume);
+    }
+    
+    /* Add pitch parameter */
+    if (engine->config.pitch != 0) {
+        int pitch = CLAMP(engine->config.pitch, -100, 100);
+        g_string_append_printf(cmd_builder, " --pitch %d", pitch);
+    }
+    
+    /* Add voice parameter if specified */
+    if (spd_data->current_voice) {
+        g_string_append_printf(cmd_builder, " --synthesis-voice '%s'", spd_data->current_voice);
+    }
+    
+    /* Add the text to speak */
+    g_string_append_printf(cmd_builder, " '%s'", text);
+    
+    command = g_string_free(cmd_builder, FALSE);
+    
+    if (command == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return false;
+    }
+    
+    /* Execute spd-say command asynchronously */
+    GPid child_pid;
+    gchar** argv;
+    GError* g_error = NULL;
+    
+    if (!g_shell_parse_argv(command, NULL, &argv, &g_error)) {
+        g_free(command);
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        return false;
+    }
+    
+    bool success = g_spawn_async(NULL, argv, NULL, 
+                                G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
+                                NULL, NULL, &child_pid, &g_error);
+    
+    g_strfreev(argv);
+    g_free(command);
+    
+    if (!success) {
+        if (g_error) {
+            g_error_free(g_error);
+        }
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        return false;
+    }
+    
+    spd_data->current_process = child_pid;
+    spd_data->is_speaking = true;
+    spd_data->is_paused = false;
+    engine->state = TTS_ENGINE_STATE_SPEAKING;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static bool speech_dispatcher_engine_pause(tts_engine_t* engine, bool pause, zathura_error_t* error) {
-    /* TODO: Implement in task 4.3 */
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Speech Dispatcher doesn't support pause/resume directly, so we simulate it */
+    if (spd_data->current_process > 0) {
+        if (pause) {
+            /* Send SIGSTOP to pause the process */
+            if (kill(spd_data->current_process, SIGSTOP) == 0) {
+                spd_data->is_paused = true;
+                engine->state = TTS_ENGINE_STATE_PAUSED;
+                if (error) *error = ZATHURA_ERROR_OK;
+                return true;
+            }
+        } else {
+            /* Send SIGCONT to resume the process */
+            if (kill(spd_data->current_process, SIGCONT) == 0) {
+                spd_data->is_paused = false;
+                engine->state = TTS_ENGINE_STATE_SPEAKING;
+                if (error) *error = ZATHURA_ERROR_OK;
+                return true;
+            }
+        }
+    }
+    
     if (error) *error = ZATHURA_ERROR_UNKNOWN;
     return false;
 }
 
 static bool speech_dispatcher_engine_stop(tts_engine_t* engine, zathura_error_t* error) {
-    /* TODO: Implement in task 4.3 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Stop any running process */
+    if (spd_data->current_process > 0) {
+        if (kill(spd_data->current_process, SIGTERM) == 0) {
+            waitpid(spd_data->current_process, NULL, 0);
+            spd_data->current_process = 0;
+            spd_data->is_speaking = false;
+            spd_data->is_paused = false;
+            engine->state = TTS_ENGINE_STATE_IDLE;
+            
+            if (error) *error = ZATHURA_ERROR_OK;
+            return true;
+        }
+    }
+    
+    /* If no process was running, still consider it successful */
+    spd_data->is_speaking = false;
+    spd_data->is_paused = false;
+    engine->state = TTS_ENGINE_STATE_IDLE;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static bool speech_dispatcher_engine_set_config(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
-    /* TODO: Implement in task 4.3 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return false;
+    if (engine == NULL || config == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return false;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Update engine configuration */
+    g_free(engine->config.voice_name);
+    engine->config = *config;
+    engine->config.voice_name = config->voice_name ? g_strdup(config->voice_name) : NULL;
+    
+    /* Update current voice if changed */
+    if (config->voice_name) {
+        g_free(spd_data->current_voice);
+        spd_data->current_voice = g_strdup(config->voice_name);
+    }
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return true;
 }
 
 static tts_engine_state_t speech_dispatcher_engine_get_state(tts_engine_t* engine) {
-    /* TODO: Implement in task 4.3 */
-    return TTS_ENGINE_STATE_ERROR;
+    if (engine == NULL || engine->engine_data == NULL) {
+        return TTS_ENGINE_STATE_ERROR;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Check if process is still running */
+    if (spd_data->current_process > 0) {
+        int status;
+        pid_t result = waitpid(spd_data->current_process, &status, WNOHANG);
+        
+        if (result == 0) {
+            /* Process is still running */
+            return spd_data->is_paused ? TTS_ENGINE_STATE_PAUSED : TTS_ENGINE_STATE_SPEAKING;
+        } else {
+            /* Process has finished */
+            spd_data->current_process = 0;
+            spd_data->is_speaking = false;
+            spd_data->is_paused = false;
+            engine->state = TTS_ENGINE_STATE_IDLE;
+            return TTS_ENGINE_STATE_IDLE;
+        }
+    }
+    
+    return TTS_ENGINE_STATE_IDLE;
 }
 
 static girara_list_t* speech_dispatcher_engine_get_voices(tts_engine_t* engine, zathura_error_t* error) {
-    /* TODO: Implement in task 4.3 */
-    if (error) *error = ZATHURA_ERROR_UNKNOWN;
-    return NULL;
+    if (engine == NULL || engine->engine_data == NULL) {
+        if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
+        return NULL;
+    }
+    
+    speech_dispatcher_engine_data_t* spd_data = (speech_dispatcher_engine_data_t*)engine->engine_data;
+    
+    /* Return cached voices if available */
+    if (spd_data->available_voices != NULL) {
+        if (error) *error = ZATHURA_ERROR_OK;
+        return spd_data->available_voices;
+    }
+    
+    /* Create voices list */
+    girara_list_t* voices = girara_list_new();
+    if (voices == NULL) {
+        if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
+        return NULL;
+    }
+    
+    girara_list_set_free_function(voices, (girara_free_function_t)tts_voice_info_free);
+    
+    /* Get available voices from Speech Dispatcher */
+    FILE* fp = popen("spd-say --list-synthesis-voices 2>/dev/null", "r");
+    if (fp != NULL) {
+        char line[256];
+        while (fgets(line, sizeof(line), fp) != NULL) {
+            /* Parse voice line format: "voice_name language gender" */
+            char* voice_name = strtok(line, " \t\n");
+            char* language = strtok(NULL, " \t\n");
+            char* gender = strtok(NULL, " \t\n");
+            
+            if (voice_name != NULL) {
+                /* Create voice info */
+                tts_voice_info_t* voice_info = tts_voice_info_new(
+                    voice_name,
+                    language ? language : "unknown",
+                    gender ? gender : "neutral",
+                    70  /* Medium quality for Speech Dispatcher */
+                );
+                
+                if (voice_info != NULL) {
+                    girara_list_append(voices, voice_info);
+                }
+            }
+        }
+        pclose(fp);
+    }
+    
+    /* If no voices found, add default voices */
+    if (girara_list_size(voices) == 0) {
+        /* Add common Speech Dispatcher voice types */
+        const char* default_voices[] = {
+            "male1", "male2", "male3",
+            "female1", "female2", "female3",
+            "child_male", "child_female",
+            NULL
+        };
+        
+        for (int i = 0; default_voices[i] != NULL; i++) {
+            tts_voice_info_t* voice_info = tts_voice_info_new(
+                default_voices[i],
+                "en",
+                strstr(default_voices[i], "female") ? "female" : 
+                strstr(default_voices[i], "male") ? "male" : "neutral",
+                65  /* Basic quality */
+            );
+            
+            if (voice_info != NULL) {
+                girara_list_append(voices, voice_info);
+            }
+        }
+    }
+    
+    /* Cache the voices list */
+    spd_data->available_voices = voices;
+    
+    if (error) *error = ZATHURA_ERROR_OK;
+    return voices;
 }
 
 static bool espeak_engine_init(tts_engine_t* engine, tts_engine_config_t* config, zathura_error_t* error) {
