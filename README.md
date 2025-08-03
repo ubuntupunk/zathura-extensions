@@ -47,7 +47,7 @@ This plugin allows you to listen to your PDF documents directly within Zathura, 
     For the best audio quality, install the Piper-TTS Python package.
 
     ```bash
-    pip install piper-tts
+    pip install piper
     ```
 
 3.  **Build the Plugin**:
