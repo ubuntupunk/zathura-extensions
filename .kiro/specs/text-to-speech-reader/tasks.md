@@ -116,7 +116,7 @@
     - Implement tests for audio state management
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-  - [ ] 9.2 Create integration tests
+  - [x] 9.2 Create integration tests
     - Test plugin registration and lifecycle with Zathura
     - Verify keyboard shortcut integration
     - Test configuration persistence and loading
