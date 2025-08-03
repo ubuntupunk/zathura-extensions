@@ -16,7 +16,19 @@
 typedef struct tts_session_s tts_session_t;
 typedef struct tts_config_s tts_config_t;
 typedef struct tts_engine_s tts_engine_t;
-typedef struct tts_audio_state_s tts_audio_state_t;
+typedef struct tts_audio_controller_s tts_audio_controller_t;
+typedef struct tts_ui_controller_s tts_ui_controller_t;
+
+/* TTS session structure containing all components */
+struct tts_session_s {
+  tts_config_t* config;
+  tts_engine_t* engine;
+  tts_audio_controller_t* audio_controller;
+  tts_ui_controller_t* ui_controller;
+  zathura_t* zathura;
+  girara_session_t* girara_session;
+  bool active;
+};
 
 /* Plugin metadata structure */
 typedef struct tts_plugin_s {
