@@ -1,0 +1,15 @@
+# Plugin library
+usr/lib/*/zathura/libtts.so
+
+# Desktop files and metadata
+usr/share/applications/*.desktop
+usr/share/metainfo/*.xml
+
+# Documentation
+usr/share/doc/zathura-tts/README.md
+usr/share/doc/zathura-tts/INSTALLATION.md
+usr/share/doc/zathura-tts/QUICKSTART.md
+usr/share/doc/zathura-tts/TROUBLESHOOTING.md
+
+# Voice samples (if present)
+usr/share/zathura-tts/voices/* usr/share/zathura-tts/voices/

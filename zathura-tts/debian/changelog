@@ -1,0 +1,15 @@
+zathura-tts (1.0.0-1) unstable; urgency=medium
+
+  * Initial release of Zathura TTS plugin
+  * Multiple TTS engine support (Piper-TTS, Speech Dispatcher, espeak-ng)
+  * Advanced text extraction and processing capabilities
+  * Comprehensive keyboard shortcuts for TTS control
+  * Visual feedback with text highlighting during reading
+  * Configurable speech settings (speed, volume, voice selection)
+  * Special content handling for mathematical formulas and tables
+  * Session persistence and reading position memory
+  * Extensive documentation and troubleshooting guides
+  * Complete test suite with unit and integration tests
+  * Developer documentation and API reference
+
+ -- Zathura TTS Development Team <dev@zathura-tts.org>  Sat, 02 Aug 2025 12:00:00 +0000

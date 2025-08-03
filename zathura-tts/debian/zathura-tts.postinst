@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Update plugin cache if zathura supports it
+        if command -v zathura >/dev/null 2>&1; then
+            # Refresh plugin cache
+            if [ -x /usr/bin/update-zathura-plugins ]; then
+                update-zathura-plugins || true
+            fi
+        fi
+        
+        # Inform user about TTS engine installation
+        echo "Zathura TTS plugin installed successfully!"
+        echo ""
+        echo "To use the plugin, install at least one TTS engine:"
+        echo "  - For best quality: pip install piper"
+        echo "  - For system integration: apt install speech-dispatcher"
+        echo "  - For lightweight option: apt install espeak-ng"
+        echo ""
+        echo "See /usr/share/doc/zathura-tts/QUICKSTART.md for setup instructions."
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

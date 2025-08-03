@@ -1,0 +1,62 @@
+Source: zathura-tts
+Section: text
+Priority: optional
+Maintainer: Zathura TTS Development Team <dev@zathura-tts.org>
+Build-Depends: debhelper-compat (= 13),
+               meson (>= 0.56.0),
+               ninja-build,
+               pkg-config,
+               libzathura-dev (>= 0.4.0),
+               libgirara-dev (>= 0.3.0),
+               libglib2.0-dev (>= 2.50),
+               libgtk-3-dev (>= 3.22),
+               libcairo2-dev,
+               libpoppler-glib-dev
+Standards-Version: 4.6.0
+Homepage: https://github.com/zathura-pdf/zathura-tts
+Vcs-Git: https://github.com/zathura-pdf/zathura-tts.git
+Vcs-Browser: https://github.com/zathura-pdf/zathura-tts
+Rules-Requires-Root: no
+
+Package: zathura-tts
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+         zathura (>= 0.4.0),
+         python3,
+         python3-pip
+Recommends: piper-tts | speech-dispatcher | espeak-ng
+Suggests: piper-tts,
+          speech-dispatcher,
+          espeak-ng,
+          festival
+Description: Text-to-speech plugin for Zathura PDF viewer
+ This plugin adds comprehensive text-to-speech functionality to the Zathura
+ PDF viewer, enabling users to listen to PDF documents with high-quality
+ synthetic speech.
+ .
+ Features include:
+  * Multiple TTS engine support (Piper-TTS, Speech Dispatcher, espeak-ng)
+  * Advanced text extraction and processing
+  * Keyboard shortcuts for playback control
+  * Visual feedback with text highlighting
+  * Configurable speech settings (speed, volume, voice)
+  * Special content handling (math formulas, tables, links)
+  * Session persistence and reading position memory
+ .
+ The plugin automatically detects and uses the best available TTS engine,
+ with graceful fallback to ensure functionality across different systems.
+
+Package: zathura-tts-dev
+Architecture: any
+Section: libdevel
+Depends: ${misc:Depends},
+         zathura-tts (= ${binary:Version}),
+         libzathura-dev,
+         libgirara-dev,
+         libglib2.0-dev
+Description: Development files for Zathura TTS plugin
+ This package contains the development files needed to build extensions
+ or applications that integrate with the Zathura TTS plugin.
+ .
+ It includes header files, API documentation, and example code for
+ developers who want to extend the plugin or create custom TTS engines.

@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Update plugin cache if zathura supports it
+        if command -v zathura >/dev/null 2>&1; then
+            if [ -x /usr/bin/update-zathura-plugins ]; then
+                update-zathura-plugins || true
+            fi
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

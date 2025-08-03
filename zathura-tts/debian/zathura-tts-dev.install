@@ -1,0 +1,9 @@
+# Header files
+usr/include/zathura-tts/*.h
+
+# Development documentation
+usr/share/doc/zathura-tts/DEVELOPER.md
+usr/share/doc/zathura-tts/BUILD.md
+
+# pkg-config files (if generated)
+usr/lib/*/pkgconfig/zathura-tts.pc
