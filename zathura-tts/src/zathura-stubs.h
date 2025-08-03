@@ -24,7 +24,8 @@ zathura_link_type_t zathura_link_get_type(zathura_link_t* link);
 zathura_link_target_t zathura_link_get_target(zathura_link_t* link);
 girara_statusbar_item_t* girara_statusbar_item_get_default(girara_session_t* session);
 
-/* Page API stubs */
+/* Page API stubs - needed for standalone compilation and testing
+ * These functions are provided by Zathura at runtime when the plugin is loaded */
 double zathura_page_get_width(zathura_page_t* page);
 double zathura_page_get_height(zathura_page_t* page);
 char* zathura_page_get_text(zathura_page_t* page, zathura_rectangle_t rectangle, zathura_error_t* error);

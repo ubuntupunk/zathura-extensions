@@ -50,6 +50,7 @@ test_main = executable(
   dependencies: test_deps,
   link_with: test_framework_lib,
   include_directories: inc,
+  c_args: ['-DTTS_TESTING_MODE'],
 )
 
 # Integration tests (requires more plugin sources) - temporarily disabled

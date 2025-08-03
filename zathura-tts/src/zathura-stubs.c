@@ -82,7 +82,8 @@ girara_statusbar_item_get_default(girara_session_t* session)
     return NULL; /* Return NULL for now - UI functions should handle this gracefully */
 }
 
-/* Page API stub implementations */
+/* Page API stub implementations - needed for standalone compilation and testing
+ * These functions are provided by Zathura at runtime when the plugin is loaded */
 
 double 
 zathura_page_get_width(zathura_page_t* page) 
