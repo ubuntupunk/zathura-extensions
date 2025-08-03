@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zathurarc Maker</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f8f9fa; color: #212529; }
+        .container { max-width: 800px; margin: 0 auto; background-color: #ffffff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .intro { text-align: center; margin-bottom: 2em; }
+        .intro h1 { color: #0056b3; }
+        .intro p { font-size: 1.1em; }
+        .option-group { margin-bottom: 1.5em; }
+        .option-group h2 { border-bottom: 2px solid #0056b3; padding-bottom: 0.5em; color: #0056b3; }
+        .option { display: grid; grid-template-columns: 250px 1fr; align-items: center; margin-bottom: 1em; padding: 0.5em; border-radius: 4px; transition: background-color 0.3s; }
+        .option:hover { background-color: #f1f3f5; }
+        .option label { font-weight: bold; }
+        .option .control { display: flex; align-items: center; }
+        .option input[type="text"], .option input[type="color"], .option input[type="checkbox"] { margin-right: 10px; }
+        .option .description { font-size: 0.9em; color: #6c757d; }
+        .save-button { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .save-button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="intro">
+            <h1>Zathurarc Maker</h1>
+            <p>Welcome to the Zathurarc Maker! Zathura is a highly customizable and functional document viewer based on the girara user interface library and several document backends. This tool helps you easily generate your own <code>zathurarc</code> configuration file.</p>
+            <p>Based on the <a href="https://pwmt.org/projects/zathura/documentation/">official Zathura documentation</a>.</p>
+        </div>
+
+        <div class="option-group">
+            <h2>Booleans</h2>
+            <div class="option"><label for="abort-clear-search">abort-clear-search</label><div class="control"><input type="checkbox" id="abort-clear-search" data-type="bool"><span class="description">If true, aborting a search clears the last search results.</span></div></div>
+            <div class="option"><label for="adjust-open">adjust-open</label><div class="control"><input type="checkbox" id="adjust-open" data-type="bool"><span class="description">Adjust window to best-fit mode when opening a document.</span></div></div>
+            <div class="option"><label for="completion-case-sensitive">completion-case-sensitive</label><div class="control"><input type="checkbox" id="completion-case-sensitive" data-type="bool"><span class="description">Case-sensitive tab-completion.</span></div></div>
+            <div class="option"><label for="completion-cycle">completion-cycle</label><div class="control"><input type="checkbox" id="completion-cycle" data-type="bool"><span class="description">Cycle through completion suggestions.</span></div></div>
+            <div class="option"><label for="dbus-service">dbus-service</label><div class="control"><input type="checkbox" id="dbus-service" data-type="bool"><span class="description">Enable D-Bus service.</span></div></div>
+            <div class="option"><label for="guioptions-h">guioptions-h</label><div class="control"><input type="checkbox" id="guioptions-h" data-type="bool"><span class="description">Show horizontal scrollbar.</span></div></div>
+            <div class="option"><label for="guioptions-v">guioptions-v</label><div class="control"><input type="checkbox" id="guioptions-v" data-type="bool"><span class="description">Show vertical scrollbar.</span></div></div>
+            <div class="option"><label for="incremental-search">incremental-search</label><div class="control"><input type="checkbox" id="incremental-search" data-type="bool"><span class="description">Search as you type.</span></div></div>
+            <div class="option"><label for="recolor">recolor</label><div class="control"><input type="checkbox" id="recolor" data-type="bool"><span class="description">Enable recoloring of pages.</span></div></div>
+            <div class="option"><label for="render-loading">render-loading</label><div class="control"><input type="checkbox" id="render-loading" data-type="bool"><span class="description">Draw a loading icon while rendering.</span></div></div>
+            <div class="option"><label for="sandbox">sandbox</label><div class="control"><input type="checkbox" id="sandbox" data-type="bool"><span class="description">Enable seccomp filter sandbox.</span></div></div>
+            <div class="option"><label for="search-had-results">search-had-results</label><div class="control"><input type="checkbox" id="search-had-results" data-type="bool"><span class="description">Indicates if the last search returned results.</span></div></div>
+            <div class="option"><label for="show-scrollbars">show-scrollbars</label><div class="control"><input type="checkbox" id="show-scrollbars" data-type="bool"><span class="description">Show scrollbars.</span></div></div>
+            <div class="option"><label for="synctex">synctex</label><div class="control"><input type="checkbox" id="synctex" data-type="bool"><span class="description">Enable SyncTeX support.</span></div></div>
+            <div class="option"><label for="window-title-home-tilde">window-title-home-tilde</label><div class="control"><input type="checkbox" id="window-title-home-tilde" data-type="bool"><span class="description">Replace $HOME with ~ in the window title.</span></div></div>
+        </div>
+
+        <div class="option-group">
+            <h2>Strings</h2>
+            <div class="option"><label for="browser">browser</label><div class="control"><input type="text" id="browser" data-type="string" placeholder="e.g., firefox"><span class="description">Browser to open links.</span></div></div>
+            <div class="option"><label for="completion-group">completion-group</label><div class="control"><input type="text" id="completion-group" data-type="string" placeholder="e.g., default"><span class="description">Current completion group.</span></div></div>
+            <div class="option"><label for="completion-groups">completion-groups</label><div class="control"><input type="text" id="completion-groups" data-type="string" placeholder="e.g., default bookmarks"><span class="description">Available completion groups.</span></div></div>
+            <div class="option"><label for="config-dir">config-dir</label><div class="control"><input type="text" id="config-dir" data-type="string" placeholder="e.g., ~/.config/zathura"><span class="description">Path to config directory.</span></div></div>
+            <div class="option"><label for="data-dir">data-dir</label><div class="control"><input type="text" id="data-dir" data-type="string" placeholder="e.g., ~/.local/share/zathura"><span class="description">Path to data directory.</span></div></div>
+            <div class="option"><label for="font">font</label><div class="control"><input type="text" id="font" data-type="string" placeholder="e.g., monospace 12"><span class="description">Font for the UI.</span></div></div>
+            <div class="option"><label for="hooks-file">hooks-file</label><div class="control"><input type="text" id="hooks-file" data-type="string" placeholder="e.g., ~/.config/zathura/hooks.sh"><span class="description">File with hooks.</span></div></div>
+            <div class="option"><label for="input-history">input-history</label><div class="control"><input type="text" id="input-history" data-type="string" placeholder="e.g., ~/.local/share/zathura/history"><span class="description">Path to input history file.</span></div></div>
+            <div class="option"><label for="search-history">search-history</label><div class="control"><input type="text" id="search-history" data-type="string" placeholder="e.g., ~/.local/share/zathura/search-history"><span class="description">Path to search history file.</span></div></div>
+            <div class="option"><label for="synctex-editor-command">synctex-editor-command</label><div class="control"><input type="text" id="synctex-editor-command" data-type="string" placeholder="e.g., gvim --remote-silent +%l %f"><span class="description">SyncTeX editor command.</span></div></div>
+            <div class="option"><label for="window-icon">window-icon</label><div class="control"><input type="text" id="window-icon" data-type="string" placeholder="e.g., /path/to/icon.png"><span class="description">Path to window icon.</span></div></div>
+        </div>
+
+        <div class="option-group">
+            <h2>Colors</h2>
+            <div class="option"><label for="default-bg">default-bg</label><div class="control"><input type="color" id="default-bg" value="#ffffff" data-type="color"><span class="description">Default background color.</span></div></div>
+            <div class="option"><label for="default-fg">default-fg</label><div class="control"><input type="color" id="default-fg" value="#000000" data-type="color"><span class="description">Default foreground color.</span></div></div>
+            <div class="option"><label for="completion-bg">completion-bg</label><div class="control"><input type="color" id="completion-bg" value="#ffffff" data-type="color"><span class="description">Completion background color.</span></div></div>
+            <div class="option"><label for="completion-fg">completion-fg</label><div class="control"><input type="color" id="completion-fg" value="#000000" data-type="color"><span class="description">Completion foreground color.</span></div></div>
+            <div class="option"><label for="completion-group-bg">completion-group-bg</label><div class="control"><input type="color" id="completion-group-bg" value="#ffffff" data-type="color"><span class="description">Completion group background color.</span></div></div>
+            <div class="option"><label for="completion-group-fg">completion-group-fg</label><div class="control"><input type="color" id="completion-group-fg" value="#000000" data-type="color"><span class="description">Completion group foreground color.</span></div></div>
+            <div class="option"><label for="completion-highlight-bg">completion-highlight-bg</label><div class="control"><input type="color" id="completion-highlight-bg" value="#000000" data-type="color"><span class="description">Completion highlight background color.</span></div></div>
+            <div class="option"><label for="completion-highlight-fg">completion-highlight-fg</label><div class="control"><input type="color" id="completion-highlight-fg" value="#ffffff" data-type="color"><span class="description">Completion highlight foreground color.</span></div></div>
+            <div class="option"><label for="statusbar-bg">statusbar-bg</label><div class="control"><input type="color" id="statusbar-bg" value="#ffffff" data-type="color"><span class="description">Statusbar background color.</span></div></div>
+            <div class="option"><label for="statusbar-fg">statusbar-fg</label><div class="control"><input type="color" id="statusbar-fg" value="#000000" data-type="color"><span class="description">Statusbar foreground color.</span></div></div>
+            <div class="option"><label for="notification-bg">notification-bg</label><div class="control"><input type="color" id="notification-bg" value="#ffffff" data-type="color"><span class="description">Notification background color.</span></div></div>
+            <div class="option"><label for="notification-fg">notification-fg</label><div class="control"><input type="color" id="notification-fg" value="#000000" data-type="color"><span class="description">Notification foreground color.</span></div></div>
+            <div class="option"><label for="notification-error-bg">notification-error-bg</label><div class="control"><input type="color" id="notification-error-bg" value="#ff0000" data-type="color"><span class="description">Notification error background color.</span></div></div>
+            <div class="option"><label for="notification-error-fg">notification-error-fg</label><div class="control"><input type="color" id="notification-error-fg" value="#ffffff" data-type="color"><span class="description">Notification error foreground color.</span></div></div>
+            <div class="option"><label for="notification-warning-bg">notification-warning-bg</label><div class="control"><input type="color" id="notification-warning-bg" value="#ffff00" data-type="color"><span class="description">Notification warning background color.</span></div></div>
+            <div class="option"><label for="notification-warning-fg">notification-warning-fg</label><div class="control"><input type="color" id="notification-warning-fg" value="#000000" data-type="color"><span class="description">Notification warning foreground color.</span></div></div>
+            <div class="option"><label for="highlight-color">highlight-color</label><div class="control"><input type="color" id="highlight-color" value="#ffff00" data-type="color"><span class="description">Highlight color for search results.</span></div></div>
+            <div class="option"><label for="highlight-active-color">highlight-active-color</label><div class="control"><input type="color" id="highlight-active-color" value="#00ff00" data-type="color"><span class="description">Highlight color for active search result.</span></div></div>
+            <div class="option"><label for="index-bg">index-bg</label><div class="control"><input type="color" id="index-bg" value="#ffffff" data-type="color"><span class="description">Index background color.</span></div></div>
+            <div class="option"><label for="index-fg">index-fg</label><div class="control"><input type="color" id="index-fg" value="#000000" data-type="color"><span class="description">Index foreground color.</span></div></div>
+            <div class="option"><label for="index-active-bg">index-active-bg</label><div class="control"><input type="color" id="index-active-bg" value="#000000" data-type="color"><span class="description">Active index background color.</span></div></div>
+            <div class="option"><label for="index-active-fg">index-active-fg</label><div class="control"><input type="color" id="index-active-fg" value="#ffffff" data-type="color"><span class="description">Active index foreground color.</span></div></div>
+            <div class="option"><label for="inputbar-bg">inputbar-bg</label><div class="control"><input type="color" id="inputbar-bg" value="#ffffff" data-type="color"><span class="description">Inputbar background color.</span></div></div>
+            <div class="option"><label for="inputbar-fg">inputbar-fg</label><div class="control"><input type="color" id="inputbar-fg" value="#000000" data-type="color"><span class="description">Inputbar foreground color.</span></div></div>
+            <div class="option"><label for="recolor-darkcolor">recolor-darkcolor</label><div class="control"><input type="color" id="recolor-darkcolor" value="#ffffff" data-type="color"><span class="description">Dark color for recoloring.</span></div></div>
+            <div class="option"><label for="recolor-lightcolor">recolor-lightcolor</label><div class="control"><input type="color" id="recolor-lightcolor" value="#000000" data-type="color"><span class="description">Light color for recoloring.</span></div></div>
+            <div class="option"><label for="render-loading-bg">render-loading-bg</label><div class="control"><input type="color" id="render-loading-bg" value="#ffffff" data-type="color"><span class="description">Loading icon background color.</span></div></div>
+            <div class="option"><label for="render-loading-fg">render-loading-fg</label><div class="control"><input type="color" id="render-loading-fg" value="#000000" data-type="color"><span class="description">Loading icon foreground color.</span></div></div>
+            <div class="option"><label for="select-text">select-text</label><div class="control"><input type="color" id="select-text" value="#0000ff" data-type="color"><span class="description">Color of selected text.</span></div></div>
+        </div>
+
+        <div class="option-group">
+            <h2>Keybindings</h2>
+            <p class="description">Here you can customize the most common keybindings. For more advanced mappings, please refer to the Zathura documentation.</p>
+            <div class="option"><label>Go to next page</label><div class="control"><input type="text" data-type="keybinding" data-command="goto next" value="J"></div></div>
+            <div class="option"><label>Go to previous page</label><div class="control"><input type="text" data-type="keybinding" data-command="goto previous" value="K"></div></div>
+            <div class="option"><label>Scroll down</label><div class="control"><input type="text" data-type="keybinding" data-command="scroll down" value="j"></div></div>
+            <div class="option"><label>Scroll up</label><div class="control"><input type="text" data-type="keybinding" data-command="scroll up" value="k"></div></div>
+            <div class="option"><label>Scroll right</label><div class="control"><input type="text" data-type="keybinding" data-command="scroll right" value="l"></div></div>
+            <div class="option"><label>Scroll left</label><div class="control"><input type="text" data-type="keybinding" data-command="scroll left" value="h"></div></div>
+            <div class="option"><label>Go to first page</label><div class="control"><input type="text" data-type="keybinding" data-command="goto first" value="gg"></div></div>
+            <div class="option"><label>Go to last page</label><div class="control"><input type="text" data-type="keybinding" data-command="goto last" value="G"></div></div>
+            <div class="option"><label>Search forward</label><div class="control"><input type="text" data-type="keybinding" data-command="search forward" value="/"></div></div>
+            <div class="option"><label>Search backward</label><div class="control"><input type="text" data-type="keybinding" data-command="search backward" value="?"></div></div>
+            <div class="option"><label>Zoom in</label><div class="control"><input type="text" data-type="keybinding" data-command="zoom in" value="+"></div></div>
+            <div class="option"><label>Zoom out</label><div class="control"><input type="text" data-type="keybinding" data-command="zoom out" value="-"></div></div>
+            <div class="option"><label>Fit to page</label><div class="control"><input type="text" data-type="keybinding" data-command="adjust_window best-fit" value="a"></div></div>
+            <div class="option"><label>Fit to width</label><div class="control"><input type="text" data-type="keybinding" data-command="adjust_window width" value="s"></div></div>
+            <div class="option"><label>Rotate</label><div class="control"><input type="text" data-type="keybinding" data-command="rotate" value="r"></div></div>
+            <div class="option"><label>Toggle fullscreen</label><div class="control"><input type="text" data-type="keybinding" data-command="toggle_fullscreen" value="F11"></div></div>
+            <div class="option"><label>Quit</label><div class="control"><input type="text" data-type="keybinding" data-command="quit" value="q"></div></div>
+        </div>
+
+    </div>
+
+    <button class="save-button" onclick="generateAndSave()">Generate and Save</button>
+
+    <script>
+        function generateAndSave() {
+            let output = '# Zathurarc generated by Zathurarc Maker\n\n';
+
+            output += '# -- Settings --\n';
+            const settings = document.querySelectorAll('input[data-type="bool"], input[data-type="string"], input[data-type="color"]');
+            settings.forEach(option => {
+                const id = option.id;
+                const type = option.dataset.type;
+                let value;
+
+                if (type === 'bool') {
+                    if (option.checked) {
+                        output += `set ${id} true\n`;
+                    }
+                } else if (type === 'string') {
+                    value = option.value.trim();
+                    if (value) {
+                        output += `set ${id} "${value}"\n`;
+                    }
+                } else if (type === 'color') {
+                    value = option.value;
+                    if (value !== option.defaultValue) {
+                        output += `set ${id} "${value}"\n`;
+                    }
+                }
+            });
+
+            output += '\n# -- Keybindings --\n';
+            const keybindings = document.querySelectorAll('input[data-type="keybinding"]');
+            keybindings.forEach(input => {
+                const command = input.dataset.command;
+                const key = input.value.trim();
+                if (key) {
+                    output += `map ${key} ${command}\n`;
+                }
+            });
+
+            const blob = new Blob([output], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'zathurarc';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>
