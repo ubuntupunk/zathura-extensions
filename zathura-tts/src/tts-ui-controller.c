@@ -5,6 +5,7 @@
 #include "tts-ui-controller.h"
 #include "tts-audio-controller.h"
 #include "tts-text-extractor.h"
+#include "tts-error.h"
 #include <girara/session.h>
 #include <girara/statusbar.h>
 #include <girara/utils.h>
@@ -1224,4 +1225,347 @@ cmd_tts_status(girara_session_t* session, girara_list_t* argument_list)
     
     /* Use the same logic as the shortcut handler */
     return sc_tts_settings(session, NULL, NULL, 0);
+}/* 
+User notification and status update functions */
+
+/* Error callback for TTS error handling integration */
+static void
+tts_ui_error_callback(const tts_error_context_t* error_context, void* user_data)
+{
+    tts_ui_controller_t* controller = (tts_ui_controller_t*)user_data;
+    if (controller == NULL || error_context == NULL) {
+        return;
+    }
+    
+    /* Get user-friendly error message */
+    char* user_message = tts_error_get_user_message(error_context->error_code, error_context->details);
+    if (user_message == NULL) {
+        return;
+    }
+    
+    /* Determine timeout based on severity */
+    int timeout_ms = 3000; /* Default timeout */
+    switch (error_context->severity) {
+        case TTS_ERROR_SEVERITY_INFO:
+            timeout_ms = 2000;
+            break;
+        case TTS_ERROR_SEVERITY_WARNING:
+            timeout_ms = 4000;
+            break;
+        case TTS_ERROR_SEVERITY_ERROR:
+            timeout_ms = 5000;
+            break;
+        case TTS_ERROR_SEVERITY_CRITICAL:
+            timeout_ms = 8000;
+            break;
+    }
+    
+    /* Show error notification */
+    tts_ui_controller_show_status(controller, user_message, timeout_ms);
+    
+    g_free(user_message);
+}
+
+/* Initialize error handling integration */
+bool
+tts_ui_controller_init_error_handling(tts_ui_controller_t* controller)
+{
+    if (controller == NULL) {
+        return false;
+    }
+    
+    /* Set up error callback for user notifications */
+    tts_error_set_callback(tts_ui_error_callback, controller);
+    
+    return true;
+}
+
+/* Engine switching notifications */
+void
+tts_ui_controller_notify_engine_switch(tts_ui_controller_t* controller, 
+                                       const char* from_engine, 
+                                       const char* to_engine,
+                                       const char* reason)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    char* notification;
+    if (from_engine != NULL && to_engine != NULL) {
+        if (reason != NULL) {
+            notification = g_strdup_printf("TTS: Switched from %s to %s (%s)", 
+                                         from_engine, to_engine, reason);
+        } else {
+            notification = g_strdup_printf("TTS: Switched from %s to %s", 
+                                         from_engine, to_engine);
+        }
+    } else if (to_engine != NULL) {
+        notification = g_strdup_printf("TTS: Using %s engine", to_engine);
+    } else {
+        notification = g_strdup("TTS: Engine switched");
+    }
+    
+    tts_ui_controller_show_status(controller, notification, 4000);
+    g_free(notification);
+}
+
+/* Content availability notifications */
+void
+tts_ui_controller_notify_content_unavailable(tts_ui_controller_t* controller, 
+                                             const char* content_type,
+                                             const char* suggestion)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    char* notification;
+    if (content_type != NULL && suggestion != NULL) {
+        notification = g_strdup_printf("TTS: %s not available. %s", content_type, suggestion);
+    } else if (content_type != NULL) {
+        notification = g_strdup_printf("TTS: %s not available", content_type);
+    } else {
+        notification = g_strdup("TTS: Content not available for reading");
+    }
+    
+    tts_ui_controller_show_status(controller, notification, 4000);
+    g_free(notification);
+}
+
+/* Feature availability notifications */
+void
+tts_ui_controller_notify_feature_unavailable(tts_ui_controller_t* controller,
+                                             const char* feature_name,
+                                             const char* reason)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    char* notification;
+    if (feature_name != NULL && reason != NULL) {
+        notification = g_strdup_printf("TTS: %s unavailable - %s", feature_name, reason);
+    } else if (feature_name != NULL) {
+        notification = g_strdup_printf("TTS: %s is not available", feature_name);
+    } else {
+        notification = g_strdup("TTS: Feature not available");
+    }
+    
+    tts_ui_controller_show_status(controller, notification, 3000);
+    g_free(notification);
+}
+
+/* State change notifications with enhanced feedback */
+void
+tts_ui_controller_notify_state_change(tts_ui_controller_t* controller,
+                                      tts_audio_state_t old_state,
+                                      tts_audio_state_t new_state,
+                                      const char* additional_info)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    const char* state_icon = "?";
+    const char* state_text = "Unknown";
+    const char* state_color = ""; /* Could be used for colored output in future */
+    
+    switch (new_state) {
+        case TTS_AUDIO_STATE_PLAYING:
+            state_icon = "▶";
+            state_text = "Playing";
+            state_color = "green";
+            break;
+        case TTS_AUDIO_STATE_PAUSED:
+            state_icon = "⏸";
+            state_text = "Paused";
+            state_color = "yellow";
+            break;
+        case TTS_AUDIO_STATE_STOPPED:
+            state_icon = "⏹";
+            state_text = "Stopped";
+            state_color = "red";
+            break;
+        case TTS_AUDIO_STATE_ERROR:
+            state_icon = "⚠";
+            state_text = "Error";
+            state_color = "red";
+            break;
+    }
+    
+    char* notification;
+    if (additional_info != NULL) {
+        notification = g_strdup_printf("TTS %s %s - %s", state_icon, state_text, additional_info);
+    } else {
+        notification = g_strdup_printf("TTS %s %s", state_icon, state_text);
+    }
+    
+    /* Determine timeout based on state */
+    int timeout_ms = 2000;
+    if (new_state == TTS_AUDIO_STATE_ERROR) {
+        timeout_ms = 5000;
+    } else if (new_state == TTS_AUDIO_STATE_PLAYING) {
+        timeout_ms = 1500; /* Shorter for active states */
+    }
+    
+    tts_ui_controller_show_status(controller, notification, timeout_ms);
+    g_free(notification);
+}
+
+/* Progress notifications with detailed information */
+void
+tts_ui_controller_notify_progress_detailed(tts_ui_controller_t* controller,
+                                           int current_page,
+                                           int total_pages,
+                                           int current_segment,
+                                           int total_segments,
+                                           const char* current_text_preview)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    char* notification;
+    
+    if (current_text_preview != NULL && strlen(current_text_preview) > 0) {
+        /* Show text preview with progress */
+        size_t preview_len = strlen(current_text_preview);
+        if (preview_len > 30) {
+            notification = g_strdup_printf("TTS: Page %d/%d, Segment %d/%d - \"%.27s...\"",
+                                         current_page + 1, total_pages,
+                                         current_segment + 1, total_segments,
+                                         current_text_preview);
+        } else {
+            notification = g_strdup_printf("TTS: Page %d/%d, Segment %d/%d - \"%s\"",
+                                         current_page + 1, total_pages,
+                                         current_segment + 1, total_segments,
+                                         current_text_preview);
+        }
+    } else {
+        /* Show just progress information */
+        notification = g_strdup_printf("TTS: Page %d/%d, Segment %d/%d",
+                                     current_page + 1, total_pages,
+                                     current_segment + 1, total_segments);
+    }
+    
+    tts_ui_controller_show_status(controller, notification, 2000);
+    g_free(notification);
+}
+
+/* Configuration change notifications */
+void
+tts_ui_controller_notify_config_change(tts_ui_controller_t* controller,
+                                       const char* setting_name,
+                                       const char* old_value,
+                                       const char* new_value)
+{
+    if (controller == NULL || setting_name == NULL) {
+        return;
+    }
+    
+    char* notification;
+    if (old_value != NULL && new_value != NULL) {
+        notification = g_strdup_printf("TTS: %s changed from %s to %s",
+                                     setting_name, old_value, new_value);
+    } else if (new_value != NULL) {
+        notification = g_strdup_printf("TTS: %s set to %s", setting_name, new_value);
+    } else {
+        notification = g_strdup_printf("TTS: %s updated", setting_name);
+    }
+    
+    tts_ui_controller_show_status(controller, notification, 3000);
+    g_free(notification);
+}
+
+/* System status notifications */
+void
+tts_ui_controller_notify_system_status(tts_ui_controller_t* controller,
+                                       const char* component,
+                                       const char* status,
+                                       bool is_error)
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    char* notification;
+    const char* prefix = is_error ? "⚠ TTS" : "TTS";
+    
+    if (component != NULL && status != NULL) {
+        notification = g_strdup_printf("%s: %s - %s", prefix, component, status);
+    } else if (status != NULL) {
+        notification = g_strdup_printf("%s: %s", prefix, status);
+    } else {
+        notification = g_strdup_printf("%s: System status update", prefix);
+    }
+    
+    int timeout_ms = is_error ? 5000 : 3000;
+    tts_ui_controller_show_status(controller, notification, timeout_ms);
+    g_free(notification);
+}
+
+/* Enhanced callback for audio state changes with notifications */
+static void
+tts_audio_state_change_callback_enhanced(tts_audio_state_t old_state, 
+                                         tts_audio_state_t new_state, 
+                                         void* user_data)
+{
+    tts_ui_controller_t* controller = (tts_ui_controller_t*)user_data;
+    if (controller == NULL) {
+        return;
+    }
+    
+    /* Update visual state indicator */
+    tts_ui_controller_update_visual_state(controller, new_state);
+    
+    /* Provide detailed state change notification */
+    const char* additional_info = NULL;
+    
+    /* Add context-specific information */
+    if (new_state == TTS_AUDIO_STATE_PLAYING && old_state == TTS_AUDIO_STATE_STOPPED) {
+        additional_info = "Started reading";
+    } else if (new_state == TTS_AUDIO_STATE_PAUSED && old_state == TTS_AUDIO_STATE_PLAYING) {
+        additional_info = "Playback paused";
+    } else if (new_state == TTS_AUDIO_STATE_PLAYING && old_state == TTS_AUDIO_STATE_PAUSED) {
+        additional_info = "Playback resumed";
+    } else if (new_state == TTS_AUDIO_STATE_STOPPED) {
+        additional_info = "Playback stopped";
+    } else if (new_state == TTS_AUDIO_STATE_ERROR) {
+        additional_info = "An error occurred";
+    }
+    
+    /* Send state change notification */
+    tts_ui_controller_notify_state_change(controller, old_state, new_state, additional_info);
+    
+    /* Show document progress for active states */
+    if (new_state == TTS_AUDIO_STATE_PLAYING) {
+        tts_ui_controller_show_document_progress(controller);
+    }
+    
+    /* Update TTS active indicator */
+    bool is_active = (new_state == TTS_AUDIO_STATE_PLAYING || new_state == TTS_AUDIO_STATE_PAUSED);
+    controller->tts_active = is_active;
+}
+
+/* Enhanced visual feedback initialization with notifications */
+bool
+tts_ui_controller_init_notifications(tts_ui_controller_t* controller)
+{
+    if (controller == NULL || controller->audio_controller == NULL) {
+        return false;
+    }
+    
+    /* Set up enhanced audio state change callback */
+    tts_audio_controller_set_state_change_callback(controller->audio_controller,
+                                                   tts_audio_state_change_callback_enhanced,
+                                                   controller);
+    
+    /* Initialize error handling integration */
+    tts_ui_controller_init_error_handling(controller);
+    
+    /* Show initialization notification */
+    tts_ui_controller_notify_system_status(controller, "Notifications", "Initialized", false);
+    
+    return true;
 }

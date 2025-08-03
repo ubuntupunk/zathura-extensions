@@ -32,7 +32,7 @@
     - Create hyperlink text extraction and announcement
     - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 4. Implement TTS engine interface
+- [x] 4. Implement TTS engine interface
   - [x] 4.1 Create abstract TTS engine interface
     - Define common TTS engine interface structure
     - Implement engine detection and selection logic
@@ -57,53 +57,53 @@
     - Implement final fallback error handling
     - _Requirements: 6.3, 6.4_
 
-- [ ] 5. Implement audio controller
-  - [ ] 5.1 Create audio state management
+- [x] 5. Implement audio controller
+  - [x] 5.1 Create audio state management
     - Implement TTS playback state tracking
     - Create audio session management functions
     - Add thread-safe state synchronization
     - _Requirements: 1.1, 1.3, 3.3_
 
-  - [ ] 5.2 Implement playback controls
+  - [x] 5.2 Implement playback controls
     - Create play/pause/stop functionality
     - Implement speed and volume control
     - Add navigation between text segments
     - _Requirements: 2.1, 2.3, 3.1, 3.2_
 
-- [ ] 6. Implement UI integration
-  - [ ] 6.1 Create keyboard shortcut system
+- [x] 6. Implement UI integration
+  - [x] 6.1 Create keyboard shortcut system
     - Register TTS keyboard shortcuts with Zathura
     - Implement shortcut handlers for TTS controls
     - Add conflict detection with existing shortcuts
     - _Requirements: 1.1, 1.3, 3.1, 3.3, 5.2_
 
-  - [ ] 6.2 Implement visual feedback system
+  - [x] 6.2 Implement visual feedback system
     - Create text highlighting for currently spoken content
     - Add TTS status indicators in the UI
     - Implement progress indication for long texts
     - _Requirements: 1.2, 3.3_
 
-- [ ] 7. Implement configuration system
-  - [ ] 7.1 Create configuration structure and defaults
+- [x] 7. Implement configuration system
+  - [x] 7.1 Create configuration structure and defaults
     - Define configuration options and default values
     - Implement configuration file reading and writing
     - Add validation for configuration parameters
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-  - [ ] 7.2 Create settings interface
+  - [x] 7.2 Create settings interface
     - Implement TTS settings dialog or command interface
     - Add runtime configuration change handling
     - Create voice and engine selection interface
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 8. Implement error handling and user feedback
-  - [ ] 8.1 Create comprehensive error handling
+- [x] 8. Implement error handling and user feedback
+  - [x] 8.1 Create comprehensive error handling
     - Implement error codes and messages for all TTS operations
     - Add graceful degradation when TTS engines fail
     - Create user-friendly error notifications
     - _Requirements: 1.4, 6.3, 6.4_
 
-  - [ ] 8.2 Add user notifications and status updates
+  - [x] 8.2 Add user notifications and status updates
     - Implement status messages for TTS state changes
     - Add notifications for engine switching and errors
     - Create feedback for unavailable content or features
