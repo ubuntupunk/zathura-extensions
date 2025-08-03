@@ -5,16 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zathura Liberated</title>
     <style>
-        body { font-family: sans-serif; margin: 0; background-color: #f8f9fa; color: #212529; }
-        .header { background-color: #0056b3; color: white; padding: 2em; text-align: center; }
+        body { font-family: sans-serif; margin: 0; background-color: #282a36; color: #f8f8f2; } /* Darker background, light text */
+        .header { background-color: #44475a; color: #bd93f9; padding: 2em; text-align: center; } /* Darker header, purple accent */
         .header h1 { margin: 0; font-size: 3em; }
         .header p { font-size: 1.2em; }
         .container { max-width: 960px; margin: 2em auto; padding: 0 1em; }
-        .section { background-color: #ffffff; padding: 2em; margin-bottom: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .section h2 { border-bottom: 2px solid #0056b3; padding-bottom: 0.5em; color: #0056b3; }
-        .button { display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s; }
-        .button:hover { background-color: #0056b3; }
-        .footer { text-align: center; padding: 2em; font-size: 0.9em; color: #6c757d; }
+        .section { background-color: #383a59; padding: 2em; margin-bottom: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); } /* Darker section background */
+        .section h2 { border-bottom: 2px solid #bd93f9; padding-bottom: 0.5em; color: #bd93f9; } /* Purple accent for headings */
+        .button { display: inline-block; padding: 12px 24px; background-color: #50fa7b; color: #282a36; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s; } /* Green button */
+        .button:hover { background-color: #69ff8f; }
+        .footer { text-align: center; padding: 2em; font-size: 0.9em; color: #6272a4; } /* Muted footer text */
+        a { color: #8be9fd; text-decoration: none; } /* Light blue links */
+        a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -27,6 +29,7 @@
         <div class="section">
             <h2>Welcome to the Hive!</h2>
             <p>Zathura Liberated is where the true Zathura enthusiasts gather. We're an underground collective dedicated to pushing the boundaries of this incredible document viewer. Here, you'll find the tools to truly make Zathura your own, unearth new capabilities, and share your unique configurations with fellow tinkerers.</p>
+            <p> Zathura stands alone as a terminal PDF reader that truly rocks. Its minimalist design, vim keybindings, and extensibility make it the ultimate choice for navigating your documents with speed and precision. If you haven't experienced the Zathura yet, you can get your hands on it <a href="https://pwmt.org/projects/zathura/">here</a>.</p>
         </div>
 
         <div class="section">
@@ -37,16 +40,17 @@
 
         <div class="section">
             <h2>Expand Your Arsenal: Extensions</h2>
-            <p>Discover powerful extensions that elevate your Zathura experience. We're constantly unearthing new ways to enhance functionality. Check out what's brewing:</p>
+            <p>Discover powerful extensions that elevate your Zathura experience. We're unearthing new ways to enhance functionality. Check out what's brewing:</p>
             <ul>
-                <li><strong>zathura-tts:</strong> A text-to-speech plugin for Zathura, allowing you to have your documents read aloud.</li>
+                <li><strong><a href="https://github.com/ubuntupunk/zathura-tts">zathura-tts</a>:</strong> A text-to-speech plugin for Zathura, allowing you to have your documents read aloud, still in development.</li>
             </ul>
             <p>Got a secret weapon (extension) you've forged? Share it with the hive!</p>
         </div>
 
         <div class="section">
             <h2>Share Your Scrolls</h2>
-            <p>Your <code>zathurarc</code> is a reflection of your mastery. We're building a vault for sharing and exploring unique Zathura configurations from across the hive. Prepare to inspire and be inspired!</p>
+            <p>Your <code>zathurarc</code> is a reflection of your mastery. We're building a vault for sharing and exploring unique Zathura configurations from across the interweave. Prepare to inspire and be zathuracised!</p>
+            <p>To contribute your <code>zathurarc</code>, submit a <a href="https://github.com/ubuntupunk/zathura-liberated/pulls">Pull Request</a> to our repository.</p>
         </div>
     </div>
 
