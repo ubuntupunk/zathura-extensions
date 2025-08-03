@@ -43,7 +43,7 @@ tts_plugin_register(zathura_t* zathura)
 
   girara_info("TTS plugin registered successfully: %s v%s", 
               g_tts_plugin->name, g_tts_plugin->version);
-
+              fprintf(stderr, "=== TTS PLUGIN LOADED SUCCESSFULLY ===\n");
   return ZATHURA_ERROR_OK;
 }
 
@@ -89,7 +89,7 @@ tts_plugin_init(zathura_t* zathura)
 
   tts_session_t* session = g_tts_plugin->session;
   session->zathura = zathura;
-  session->girara_session = zathura_get_session(zathura);
+  session->girara_session = NULL; /* Will be set by UI controller when needed */
   session->active = false;
 
   /* Initialize TTS subsystems */
@@ -380,6 +380,6 @@ tts_plugin_get_instance(void)
 ZATHURA_PLUGIN_REGISTER_WITH_FUNCTIONS(
   TTS_PLUGIN_NAME,
   0, 1, 0,
-  ZATHURA_PLUGIN_FUNCTIONS({}),
+  ZATHURA_PLUGIN_FUNCTIONS({0}),
   ZATHURA_PLUGIN_MIMETYPES({"application/x-tts-extension"})
 )
