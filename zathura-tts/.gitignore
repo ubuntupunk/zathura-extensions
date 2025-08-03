@@ -54,6 +54,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+<<<<<<< HEAD
 *.swo
 *.swp
+=======
+
+>>>>>>> 9d306fe15bfccbc87e6c70bbfb7f789fdee09028
 # End of https://www.toptal.com/developers/gitignore/api/c
