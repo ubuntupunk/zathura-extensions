@@ -4,6 +4,7 @@
 
 #include "tts-audio-controller.h"
 #include <girara/utils.h>
+#include <girara/datastructures.h>
 #include <string.h>
 
 /* Audio controller management functions */
