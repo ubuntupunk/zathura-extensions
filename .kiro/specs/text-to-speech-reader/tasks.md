@@ -109,7 +109,7 @@
     - Create feedback for unavailable content or features
     - _Requirements: 1.4, 6.4_
 
-- [ ] 9. Create comprehensive test suite
+- [x] 9. Create comprehensive test suite
   - [x] 9.1 Implement unit tests for core functionality
     - Create tests for text extraction and segmentation
     - Add tests for TTS engine interface and fallback logic
@@ -134,3 +134,32 @@
     - Add code comments and API documentation
     - Create build and development setup instructions
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
+
+- [x] 11. Building Extension & Debugging
+  - [x] 11.1 Fix build system and missing API functions
+    - Resolve header structure problems and missing function declarations
+    - Add stub implementations for missing Zathura API functions
+    - Fix test suite integration and meson build configuration
+    - _Requirements: 5.1, 5.3, 5.4_
+
+  - [x] 11.2 Implement missing Zathura API stubs
+    - Add `zathura_page_get_width()` and `zathura_page_get_height()` stubs
+    - Implement `zathura_page_get_text()` stub for text extraction testing
+    - Add `zathura_page_get_index()` and `zathura_page_links_get()` stubs
+    - Ensure all stubs return appropriate test values for development
+    - _Requirements: 1.1, 1.4, 4.4, 5.3_
+
+  - [x] 11.3 Fix test suite build configuration
+    - Resolve test executable linking issues in meson.build
+    - Integrate test-audio-controller.c properly with main test runner
+    - Ensure all unit tests pass with stub implementations
+    - Verify CI/CD pipeline compatibility
+    - _Requirements: 5.1, 5.4_
+
+  - [x] 11.4 Optimize stub functions for Zathura plugin architecture
+    - Understand that Zathura plugins don't link against a Zathura library
+    - Page API functions are provided by Zathura at runtime when plugin is loaded
+    - Keep necessary stubs for standalone compilation and testing
+    - Remove conditional compilation as stubs are needed for both scenarios
+    - Document plugin architecture insights for future development
+    - _Requirements: 5.1, 5.3, 5.4_
