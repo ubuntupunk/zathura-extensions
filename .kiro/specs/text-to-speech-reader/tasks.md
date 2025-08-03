@@ -122,8 +122,8 @@
     - Test configuration persistence and loading
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 10. Add documentation and installation support
-  - [x] 10.1 Create user documentation
+- [x] 10. Add documentation and installation support
+  - [ ] 10.1 Create user documentation
     - Write installation instructions including Piper-TTS setup
     - Document keyboard shortcuts and usage
     - Create troubleshooting guide for common issues
