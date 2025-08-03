@@ -7,7 +7,9 @@
 
 /* Forward declarations */
 typedef struct tts_audio_controller_s tts_audio_controller_t;
-typedef struct tts_text_segment_s tts_text_segment_t;
+
+/* Include text segment definition from text extractor */
+#include "tts-text-extractor.h"
 
 /* Audio playback states */
 typedef enum {
@@ -17,14 +19,7 @@ typedef enum {
     TTS_AUDIO_STATE_ERROR
 } tts_audio_state_t;
 
-/* Text segment structure */
-struct tts_text_segment_s {
-    char* text;
-    int page_number;
-    int segment_id;
-    size_t start_offset;
-    size_t end_offset;
-};
+/* Text segment structure is defined in tts-text-extractor.h */
 
 /* Audio controller state structure */
 struct tts_audio_controller_s {
@@ -103,8 +98,6 @@ bool tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, i
 void tts_audio_controller_set_engine(tts_audio_controller_t* controller, void* engine);
 void* tts_audio_controller_get_engine(tts_audio_controller_t* controller);
 
-/* Text segment helper functions */
-tts_text_segment_t* tts_text_segment_new(const char* text, int page, int segment_id);
-void tts_text_segment_free(tts_text_segment_t* segment);
+/* Text segment helper functions are defined in tts-text-extractor.h */
 
 #endif /* TTS_AUDIO_CONTROLLER_H */

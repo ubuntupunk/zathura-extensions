@@ -4,14 +4,14 @@
 #include <glib.h>
 #include <stdbool.h>
 #include <girara/types.h>
+#include "tts-audio-controller.h"
 #include <girara/shortcuts.h>
 #include <zathura/types.h>
 
 /* Forward declarations */
 typedef struct tts_ui_controller_s tts_ui_controller_t;
-typedef struct tts_audio_controller_s tts_audio_controller_t;
 
-/* TTS shortcut argument types */
+/* TTS shortcut action types */
 typedef enum {
     TTS_SHORTCUT_TOGGLE,
     TTS_SHORTCUT_PAUSE_RESUME,
@@ -24,6 +24,24 @@ typedef enum {
     TTS_SHORTCUT_VOLUME_DOWN,
     TTS_SHORTCUT_SETTINGS
 } tts_shortcut_action_t;
+
+/* Shortcut information structure */
+typedef struct {
+    guint modifiers;
+    guint key;
+    char* sequence;
+    tts_shortcut_action_t action;
+    char* description;
+} tts_shortcut_info_t;
+
+/* Default shortcut structure */
+typedef struct {
+    guint modifiers;
+    guint key;
+    const char* sequence;
+    tts_shortcut_action_t action;
+    const char* description;
+} tts_shortcut_t;
 
 /* UI controller structure */
 struct tts_ui_controller_s {
@@ -46,15 +64,6 @@ struct tts_ui_controller_s {
     char* status_message;
     guint status_timeout_id;
 };
-
-/* Shortcut information structure */
-typedef struct {
-    guint modifiers;
-    guint key;
-    char* sequence;
-    tts_shortcut_action_t action;
-    char* description;
-} tts_shortcut_info_t;
 
 /* UI controller management functions */
 tts_ui_controller_t* tts_ui_controller_new(zathura_t* zathura, tts_audio_controller_t* audio_controller);

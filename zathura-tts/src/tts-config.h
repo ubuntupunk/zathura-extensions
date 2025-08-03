@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include "tts-engine.h"
 
+/* Forward declaration to match plugin.h */
+typedef struct tts_config_s tts_config_t;
+
 /* Configuration file paths */
 #define TTS_CONFIG_DIR ".config/zathura-tts"
 #define TTS_CONFIG_FILE "config"
@@ -19,7 +22,7 @@
 #define TTS_CONFIG_MAX_PITCH 50
 
 /* TTS Configuration structure */
-typedef struct {
+struct tts_config_s {
     /* Engine preferences */
     tts_engine_type_t preferred_engine;
     char* preferred_voice;
@@ -63,7 +66,7 @@ typedef struct {
     char* config_file_path;
     bool is_modified;
     GDateTime* last_modified;
-} tts_config_t;
+};
 
 /* Configuration management functions */
 tts_config_t* tts_config_new(void);

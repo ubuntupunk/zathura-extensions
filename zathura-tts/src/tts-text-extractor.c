@@ -10,6 +10,8 @@
 /* Include Zathura headers */
 #include <zathura/page.h>
 #include <zathura/types.h>
+#include <zathura/links.h>
+#include "zathura-stubs.h"
 
 /* Helper function to create a full page rectangle */
 static zathura_rectangle_t get_full_page_rectangle(zathura_page_t* page) {

@@ -12,10 +12,19 @@ plugin_name = 'zathura-tts'
 plugin_api_version = '4'
 
 # Dependencies
-zathura_dep = dependency('zathura', version: '>=0.5.0')
-girara_dep = dependency('girara-gtk3', version: '>=0.4.0')
+zathura_dep = dependency('zathura', version: '>=0.5.0', required: false)
+girara_dep = dependency('girara-gtk3', version: '>=0.4.0', required: false)
 glib_dep = dependency('glib-2.0', version: '>=2.50')
 gtk_dep = dependency('gtk+-3.0', version: '>=3.22')
+
+# Fallback to pkg-config if direct dependencies not found
+if not zathura_dep.found()
+  zathura_dep = dependency('zathura', method: 'pkg-config', required: true)
+endif
+
+if not girara_dep.found()
+  girara_dep = dependency('girara-gtk3', method: 'pkg-config', required: true)
+endif
 
 # Optional dependencies for TTS engines
 speechd_dep = dependency('speech-dispatcher', required: false)
@@ -44,6 +53,8 @@ plugin_sources = [
   'src/tts-audio-controller.c',
   'src/tts-ui-controller.c',
   'src/tts-config.c',
+  'src/tts-error.c',
+  'src/zathura-stubs.c',
 ]
 
 # Plugin dependencies
@@ -77,6 +88,11 @@ plugin_desktop = configure_file(
   install: true,
   install_dir: zathura_dep.get_variable('plugindir'),
 )
+
+# Tests subdirectory (conditional)
+if get_option('tests')
+  subdir('tests')
+endif
 
 # Summary
 summary({

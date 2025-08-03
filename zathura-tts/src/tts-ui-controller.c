@@ -6,11 +6,13 @@
 #include "tts-audio-controller.h"
 #include "tts-text-extractor.h"
 #include "tts-error.h"
+#include "zathura-stubs.h"
 #include <girara/session.h>
 #include <girara/statusbar.h>
 #include <girara/utils.h>
 #include <girara/commands.h>
-#include <zathura/zathura.h>
+#include <zathura/types.h>
+#include <zathura/plugin-api.h>
 #include <zathura/document.h>
 #include <zathura/page.h>
 #include <gtk/gtk.h>
@@ -135,7 +137,7 @@ tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller)
     bool all_registered = true;
     
     for (size_t i = 0; i < num_shortcuts; i++) {
-        const auto* shortcut = &default_shortcuts[i];
+        const tts_shortcut_t* shortcut = &default_shortcuts[i];
         
         /* Create shortcut info for tracking */
         tts_shortcut_info_t* info = tts_shortcut_info_new(
@@ -392,7 +394,8 @@ sc_tts_toggle(girara_session_t* session, girara_argument_t* argument, girara_eve
         }
         
         /* Extract text segments from current page */
-        girara_list_t* segments = tts_extract_page_segments(page, current_page_number);
+        zathura_error_t error;
+        girara_list_t* segments = tts_extract_text_segments(page, &error);
         if (segments == NULL || girara_list_size(segments) == 0) {
             tts_ui_controller_show_status(controller, "TTS: No readable text found on page", 2000);
             if (segments != NULL) {
@@ -705,8 +708,9 @@ sc_tts_settings(girara_session_t* session, girara_argument_t* argument, girara_e
     }
     
     return true;
-}/
-* Visual feedback functions */
+}
+
+/* Visual feedback functions */
 
 void 
 tts_ui_controller_update_progress(tts_ui_controller_t* controller, int current_segment, int total_segments) 
@@ -925,8 +929,9 @@ tts_ui_controller_init_visual_feedback(tts_ui_controller_t* controller)
                                                    controller);
     
     return true;
-}/
-* Command interface functions */
+}
+
+/* Command interface functions */
 
 bool 
 tts_ui_controller_register_commands(tts_ui_controller_t* controller) 

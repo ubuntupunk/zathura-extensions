@@ -139,8 +139,9 @@ test_session_management(void)
             girara_list_set_free_function(segments, (girara_free_function_t)tts_text_segment_free);
             
             /* Add test segments */
-            tts_text_segment_t* segment1 = tts_text_segment_new("Test text 1", 0, 0);
-            tts_text_segment_t* segment2 = tts_text_segment_new("Test text 2", 0, 1);
+            zathura_rectangle_t bounds = {0, 0, 100, 20}; /* x, y, width, height */
+            tts_text_segment_t* segment1 = tts_text_segment_new("Test text 1", bounds, 0, 0, TTS_CONTENT_NORMAL);
+            tts_text_segment_t* segment2 = tts_text_segment_new("Test text 2", bounds, 0, 1, TTS_CONTENT_NORMAL);
             
             TEST_ASSERT_NOT_NULL(segment1, "Segment 1 creation should succeed");
             TEST_ASSERT_NOT_NULL(segment2, "Segment 2 creation should succeed");
@@ -194,21 +195,22 @@ test_text_segment_helpers(void)
     TEST_CASE_BEGIN("Text Segment Helpers");
     
     /* Test segment creation */
-    tts_text_segment_t* segment = tts_text_segment_new("Test text", 5, 10);
+    zathura_rectangle_t bounds = {0, 0, 100, 20}; /* x, y, width, height */
+    tts_text_segment_t* segment = tts_text_segment_new("Test text", bounds, 5, 10, TTS_CONTENT_NORMAL);
     TEST_ASSERT_NOT_NULL(segment, "Segment creation should succeed");
     
     if (segment != NULL) {
         TEST_ASSERT_STRING_EQUAL("Test text", segment->text, "Segment text should match");
         TEST_ASSERT_EQUAL(5, segment->page_number, "Page number should be 5");
         TEST_ASSERT_EQUAL(10, segment->segment_id, "Segment ID should be 10");
-        TEST_ASSERT_EQUAL(0, segment->start_offset, "Start offset should be 0");
-        TEST_ASSERT_EQUAL(9, segment->end_offset, "End offset should be text length");
+        TEST_ASSERT_EQUAL(TTS_CONTENT_NORMAL, segment->type, "Content type should be NORMAL");
         
         tts_text_segment_free(segment);
     }
     
     /* Test NULL handling */
-    tts_text_segment_t* null_segment = tts_text_segment_new(NULL, 0, 0);
+    zathura_rectangle_t null_bounds = {0, 0, 0, 0};
+    tts_text_segment_t* null_segment = tts_text_segment_new(NULL, null_bounds, 0, 0, TTS_CONTENT_NORMAL);
     TEST_ASSERT_NULL(null_segment, "Creating segment with NULL text should fail");
     
     tts_text_segment_free(NULL); /* Should not crash */

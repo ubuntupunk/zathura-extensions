@@ -34,8 +34,8 @@ jobs:
           meson \
           ninja-build \
           pkg-config \
-          libzathura-dev \
-          libgirara-dev \
+          zathura-dev \
+          libgirara-gtk3-dev \
           libglib2.0-dev \
           libgtk-3-dev \
           libcairo2-dev \
@@ -44,7 +44,7 @@ jobs:
     - name: Install TTS engines for testing
       run: |
         sudo apt-get install -y speech-dispatcher espeak-ng
-        pip3 install piper
+        pip3 install piper-tts
     
     - name: Determine version
       id: version
@@ -58,6 +58,7 @@ jobs:
         echo "Building version: $VERSION"
     
     - name: Update changelog
+      working-directory: zathura-tts
       run: |
         VERSION="${{ steps.version.outputs.VERSION }}"
         
@@ -81,18 +82,18 @@ jobs:
         mv debian/changelog.new debian/changelog
     
     - name: Build source package
+      working-directory: zathura-tts
       run: |
         dpkg-buildpackage -S -us -uc
     
     - name: Build binary packages
+      working-directory: zathura-tts
       run: |
         dpkg-buildpackage -b -us -uc
     
     - name: Run tests
+      working-directory: zathura-tts
       run: |
-        # Set up test environment
-        export ZATHURA_PLUGIN_PATH=$(pwd)/debian/tmp/usr/lib/*/zathura
-        
         # Build test version
         meson setup builddir-test --buildtype=debug -Dtests=true
         meson compile -C builddir-test

@@ -3,6 +3,7 @@
  */
 
 #include "tts-audio-controller.h"
+#include "tts-engine.h"
 #include <girara/utils.h>
 #include <girara/datastructures.h>
 #include <string.h>
@@ -418,39 +419,7 @@ tts_audio_controller_set_state_change_callback(tts_audio_controller_t* controlle
     g_mutex_unlock(&controller->state_mutex);
 }
 
-/* Text segment helper functions */
-
-tts_text_segment_t* 
-tts_text_segment_new(const char* text, int page, int segment_id) 
-{
-    if (text == NULL) {
-        return NULL;
-    }
-    
-    tts_text_segment_t* segment = g_malloc0(sizeof(tts_text_segment_t));
-    if (segment == NULL) {
-        return NULL;
-    }
-    
-    segment->text = g_strdup(text);
-    segment->page_number = page;
-    segment->segment_id = segment_id;
-    segment->start_offset = 0;
-    segment->end_offset = strlen(text);
-    
-    return segment;
-}
-
-void 
-tts_text_segment_free(tts_text_segment_t* segment) 
-{
-    if (segment == NULL) {
-        return;
-    }
-    
-    g_free(segment->text);
-    g_free(segment);
-}/* P
+/* Text segment helper functions are now defined in tts-text-extractor.c *//* P
 layback control functions */
 
 bool 
@@ -459,9 +428,6 @@ tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* t
     if (controller == NULL || text == NULL || controller->tts_engine == NULL) {
         return false;
     }
-    
-    /* Include TTS engine header for function calls */
-    #include "tts-engine.h"
     
     tts_engine_t* engine = (tts_engine_t*)controller->tts_engine;
     zathura_error_t error;
