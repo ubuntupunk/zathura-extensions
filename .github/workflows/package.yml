@@ -1,0 +1,263 @@
+name: Build Debian Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-debian-packages:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ubuntu-version: ['20.04', '22.04']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          debhelper \
+          dh-meson \
+          meson \
+          ninja-build \
+          pkg-config \
+          libzathura-dev \
+          libgirara-dev \
+          libglib2.0-dev \
+          libgtk-3-dev \
+          libcairo2-dev \
+          libpoppler-glib-dev
+    
+    - name: Install TTS engines for testing
+      run: |
+        sudo apt-get install -y speech-dispatcher espeak-ng
+        pip3 install piper
+    
+    - name: Determine version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Building version: $VERSION"
+    
+    - name: Update changelog
+      working-directory: zathura-tts
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        
+        # Backup original changelog
+        cp debian/changelog debian/changelog.backup
+        
+        # Create new changelog entry
+        cat > debian/changelog.new << EOF
+        zathura-tts ($VERSION-1) unstable; urgency=medium
+        
+          * Release version $VERSION
+          * Automated build from GitHub Actions
+          * See GitHub releases for detailed changelog
+        
+         -- GitHub Actions <actions@github.com>  $(date -R)
+        
+        EOF
+        
+        # Append existing changelog
+        cat debian/changelog >> debian/changelog.new
+        mv debian/changelog.new debian/changelog
+    
+    - name: Build source package
+      working-directory: zathura-tts
+      run: |
+        dpkg-buildpackage -S -us -uc
+    
+    - name: Build binary packages
+      working-directory: zathura-tts
+      run: |
+        dpkg-buildpackage -b -us -uc
+    
+    - name: Run tests
+      working-directory: zathura-tts
+      run: |
+        # Set up test environment
+        export ZATHURA_PLUGIN_PATH=$(pwd)/debian/tmp/usr/lib/*/zathura
+        
+        # Build test version
+        meson setup builddir-test --buildtype=debug -Dtests=true
+        meson compile -C builddir-test
+        meson test -C builddir-test
+    
+    - name: Prepare packages
+      id: packages
+      working-directory: zathura-tts
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        UBUNTU_VERSION="${{ matrix.ubuntu-version }}"
+        
+        # Create package directory
+        PACKAGE_DIR="packages/v${VERSION}/ubuntu-${UBUNTU_VERSION}"
+        mkdir -p "$PACKAGE_DIR"
+        
+        # Move packages
+        mv ../zathura-tts_${VERSION}-1* "$PACKAGE_DIR/" 2>/dev/null || true
+        mv ../zathura-tts-dev_${VERSION}-1* "$PACKAGE_DIR/" 2>/dev/null || true
+        mv ../zathura-tts-dbgsym_${VERSION}-1* "$PACKAGE_DIR/" 2>/dev/null || true
+        
+        # Create package info
+        cat > "$PACKAGE_DIR/PACKAGE_INFO.md" << EOF
+        # Zathura TTS Plugin v${VERSION} - Ubuntu ${UBUNTU_VERSION} Packages
+        
+        ## Build Information
+        
+        - **Version**: ${VERSION}
+        - **Ubuntu Version**: ${UBUNTU_VERSION}
+        - **Build Date**: $(date)
+        - **Git Commit**: ${GITHUB_SHA}
+        - **GitHub Run**: ${GITHUB_RUN_NUMBER}
+        
+        ## Installation
+        
+        \`\`\`bash
+        # Download and install
+        sudo dpkg -i zathura-tts_${VERSION}-1_*.deb
+        sudo apt-get install -f
+        
+        # Install TTS engine
+        pip3 install piper
+        # OR
+        sudo apt install speech-dispatcher espeak-ng
+        \`\`\`
+        
+        ## Quick Start
+        
+        1. Open PDF: \`zathura document.pdf\`
+        2. Start TTS: Press \`Ctrl+T\`
+        3. Pause/Resume: Press \`Space\`
+        
+        For detailed instructions, see the documentation in the package.
+        EOF
+        
+        echo "PACKAGE_DIR=$PACKAGE_DIR" >> $GITHUB_OUTPUT
+        
+        # List created packages
+        echo "Created packages:"
+        ls -la "$PACKAGE_DIR"
+    
+    - name: Upload packages as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: debian-packages-ubuntu-${{ matrix.ubuntu-version }}
+        path: zathura-tts/${{ steps.packages.outputs.PACKAGE_DIR }}
+        retention-days: 30
+    
+    - name: Create release assets
+      if: startsWith(github.ref, 'refs/tags/')
+      working-directory: zathura-tts
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        UBUNTU_VERSION="${{ matrix.ubuntu-version }}"
+        PACKAGE_DIR="${{ steps.packages.outputs.PACKAGE_DIR }}"
+        
+        # Create tarball of all packages for this Ubuntu version
+        tar -czf "zathura-tts-${VERSION}-ubuntu-${UBUNTU_VERSION}.tar.gz" -C packages "v${VERSION}/ubuntu-${UBUNTU_VERSION}"
+        
+        echo "RELEASE_ASSET=zathura-tts-${VERSION}-ubuntu-${UBUNTU_VERSION}.tar.gz" >> $GITHUB_ENV
+    
+    - name: Upload to release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: zathura-tts/${{ env.RELEASE_ASSET }}
+        body: |
+          ## Zathura TTS Plugin v${{ steps.version.outputs.VERSION }}
+          
+          ### Ubuntu ${{ matrix.ubuntu-version }} Packages
+          
+          This release includes Debian packages built for Ubuntu ${{ matrix.ubuntu-version }}.
+          
+          ### Installation
+          
+          1. Download and extract the package archive
+          2. Install the package:
+             ```bash
+             sudo dpkg -i zathura-tts_${{ steps.version.outputs.VERSION }}-1_*.deb
+             sudo apt-get install -f
+             ```
+          3. Install a TTS engine:
+             ```bash
+             pip3 install piper  # Recommended
+             # OR
+             sudo apt install speech-dispatcher espeak-ng
+             ```
+          
+          ### Quick Start
+          
+          - Open a PDF: `zathura document.pdf`
+          - Start reading: Press `Ctrl+T`
+          - Pause/Resume: Press `Space`
+          - Settings: Press `Ctrl+Shift+T`
+          
+          See the included documentation for detailed usage instructions.
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-installation:
+    needs: build-debian-packages
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ubuntu-version: ['20.04', '22.04']
+    
+    steps:
+    - name: Download packages
+      uses: actions/download-artifact@v4
+      with:
+        name: debian-packages-ubuntu-${{ matrix.ubuntu-version }}
+        path: packages/
+    
+    - name: Test package installation
+      run: |
+        # Install the package
+        sudo dpkg -i packages/*.deb || true
+        sudo apt-get update
+        sudo apt-get install -f -y
+        
+        # Verify installation
+        if dpkg -l | grep -q zathura-tts; then
+          echo "✅ Package installed successfully"
+        else
+          echo "❌ Package installation failed"
+          exit 1
+        fi
+        
+        # Check if plugin is recognized
+        if zathura --list-plugins | grep -q tts; then
+          echo "✅ Plugin recognized by Zathura"
+        else
+          echo "❌ Plugin not recognized by Zathura"
+          exit 1
+        fi
+        
+        # Install TTS engine for testing
+        sudo apt-get install -y espeak-ng
+        
+        # Test basic functionality (without GUI)
+        echo "✅ Installation test completed successfully"

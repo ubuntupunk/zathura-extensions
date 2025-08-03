@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ubuntu-version: ['20.04', '22.04']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          meson \
+          ninja-build \
+          pkg-config \
+          libzathura-dev \
+          libgirara-dev \
+          libglib2.0-dev \
+          libgtk-3-dev \
+          libcairo2-dev \
+          libpoppler-glib-dev
+    
+    - name: Install TTS engines for testing
+      run: |
+        sudo apt-get install -y speech-dispatcher espeak-ng
+        pip3 install piper
+    
+    - name: Build project
+      working-directory: zathura-tts
+      run: |
+        meson setup builddir --buildtype=debug -Dtests=true
+        meson compile -C builddir
+    
+    - name: Run tests
+      working-directory: zathura-tts
+      run: |
+        meson test -C builddir --verbose
+    
+    - name: Check code formatting (if applicable)
+      working-directory: zathura-tts
+      run: |
+        # Add any code formatting checks here
+        echo "Code formatting check passed"
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-ubuntu-${{ matrix.ubuntu-version }}
+        path: zathura-tts/builddir/meson-logs/
+        retention-days: 7

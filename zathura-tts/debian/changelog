@@ -1,5 +1,12 @@
 zathura-tts (1.0.0-1) unstable; urgency=medium
 
+  * Release version 1.0.0
+  * Release v1.0.0: Complete Zathura TTS Plugin
+
+ -- Zathura TTS Development Team <dev@zathura-tts.org>  Sun, 03 Aug 2025 08:20:36 -0400
+
+zathura-tts (1.0.0-1) unstable; urgency=medium
+
   * Initial release of Zathura TTS plugin
   * Multiple TTS engine support (Piper-TTS, Speech Dispatcher, espeak-ng)
   * Advanced text extraction and processing capabilities
