@@ -1,0 +1,268 @@
+diff --git a/zathura/plugin-api.h b/zathura/plugin-api.h
+index 1234567..abcdefg 100644
+--- a/zathura/plugin-api.h
++++ b/zathura/plugin-api.h
+@@ -200,6 +200,20 @@ typedef struct zathura_plugin_definition_s {
+   const char** mime_types;
+ } zathura_plugin_definition_t;
+ 
++/**
++ * Utility plugin initialization function type
++ */
++typedef bool (*zathura_utility_plugin_init_t)(zathura_t* zathura);
++
++/**
++ * Utility plugin definition structure
++ */
++typedef struct zathura_utility_plugin_definition_s {
++  const char* name;
++  const zathura_plugin_version_t version;
++  zathura_utility_plugin_init_t init_function;
++} zathura_utility_plugin_definition_t;
++
+ #define JOIN(x, y) JOIN2(x, y)
+ #define JOIN2(x, y) x ## _ ## y
+ 
+@@ -207,6 +221,12 @@ typedef struct zathura_plugin_definition_s {
+  JOIN(zathura_plugin, JOIN(ZATHURA_API_VERSION, ZATHURA_ABI_VERSION))
+ 
+ /**
++ * Symbol name for utility plugins
++ */
++#define ZATHURA_UTILITY_PLUGIN_DEFINITION_SYMBOL \
++ JOIN(zathura_utility_plugin, JOIN(ZATHURA_API_VERSION, ZATHURA_ABI_VERSION))
++
++/**
+  * Register a plugin.
+  *
+  * @param plugin_name the name of the plugin
+@@ -227,6 +247,21 @@ typedef struct zathura_plugin_definition_s {
+     .mime_types = zathura_plugin_mime_types \
+   }; \
+ 
++/**
++ * Register a utility plugin.
++ *
++ * @param plugin_name the name of the plugin
++ * @param major the plugin's major version
++ * @param minor the plugin's minor version
++ * @param rev the plugin's revision
++ * @param init_func the plugin's initialization function
++ */
++#define ZATHURA_UTILITY_PLUGIN_REGISTER(plugin_name, major, minor, rev, init_func) \
++  ZATHURA_PLUGIN_API const zathura_utility_plugin_definition_t ZATHURA_UTILITY_PLUGIN_DEFINITION_SYMBOL = { \
++    .name = plugin_name, \
++    .version = { major, minor, rev }, \
++    .init_function = init_func \
++  }; \
++
+ #define ZATHURA_PLUGIN_MIMETYPES(...) __VA_ARGS__
+ #define ZATHURA_PLUGIN_FUNCTIONS(...) __VA_ARGS__
+ 
+diff --git a/zathura/plugin.h b/zathura/plugin.h
+index 1234567..abcdefg 100644
+--- a/zathura/plugin.h
++++ b/zathura/plugin.h
+@@ -45,6 +45,13 @@ bool zathura_plugin_manager_load(zathura_plugin_manager_t* plugin_manager);
+  */
+ const zathura_plugin_t* zathura_plugin_manager_get_plugin(const zathura_plugin_manager_t* plugin_manager,
+                                                           const char* type);
++
++/**
++ * Initialize utility plugins
++ *
++ * @param plugin_manager The plugin manager
++ * @param zathura The zathura instance
++ */
++void zathura_plugin_manager_init_utility_plugins(const zathura_plugin_manager_t* plugin_manager, zathura_t* zathura);
+ 
+ /**
+  * Returns a list with the plugin objects
+diff --git a/zathura/plugin.c b/zathura/plugin.c
+index 1234567..abcdefg 100644
+--- a/zathura/plugin.c
++++ b/zathura/plugin.c
+@@ -41,6 +41,7 @@ struct zathura_plugin_manager_s {
+   girara_list_t* path;                /**< List of plugin paths */
+   girara_list_t* type_plugin_mapping; /**< List of type -> plugin mappings */
+   girara_list_t* content_types;       /**< List of all registered content types */
++  girara_list_t* utility_plugins;    /**< List of utility plugins */
+ };
+ 
+ static void zathura_type_plugin_mapping_free(void* data) {
+@@ -61,6 +62,15 @@ static void zathura_plugin_free(void* data) {
+   }
+ }
+ 
++static void zathura_utility_plugin_free(void* data) {
++  if (data != NULL) {
++    zathura_plugin_t* plugin = data;
++    g_free(plugin->path);
++    g_module_close(plugin->handle);
++    g_free(plugin);
++  }
++}
++
+ static void add_dir(void* data, void* userdata) {
+   const char* path                         = data;
+   zathura_plugin_manager_t* plugin_manager = userdata;
+@@ -89,11 +99,13 @@ zathura_plugin_manager_t* zathura_plugin_manager_new(void) {
+   plugin_manager->path                = girara_list_new2(g_free);
+   plugin_manager->type_plugin_mapping = girara_list_new2(zathura_type_plugin_mapping_free);
+   plugin_manager->content_types       = girara_list_new2(g_free);
++  plugin_manager->utility_plugins     = girara_list_new2(zathura_utility_plugin_free);
+ 
+   if (plugin_manager->plugins == NULL || plugin_manager->path == NULL || plugin_manager->type_plugin_mapping == NULL ||
+-      plugin_manager->content_types == NULL) {
++      plugin_manager->content_types == NULL || plugin_manager->utility_plugins == NULL) {
+     zathura_plugin_manager_free(plugin_manager);
+     return NULL;
+   }
+ 
+   set_default_dirs(plugin_manager);
+@@ -108,6 +120,7 @@ void zathura_plugin_manager_free(zathura_plugin_manager_t* plugin_manager) {
+   girara_list_free(plugin_manager->path);
+   girara_list_free(plugin_manager->type_plugin_mapping);
+   girara_list_free(plugin_manager->content_types);
++  girara_list_free(plugin_manager->utility_plugins);
+   g_free(plugin_manager);
+ }
+ 
+@@ -181,6 +194,42 @@ static bool register_plugin(zathura_plugin_manager_t* plugin_manager, zathura_p
+   return at_least_one;
+ }
+ 
++static bool register_utility_plugin(zathura_plugin_manager_t* plugin_manager, zathura_plugin_t* plugin) {
++  if (plugin == NULL || plugin_manager == NULL || plugin_manager->utility_plugins == NULL) {
++    girara_error("utility plugin: could not register");
++    return false;
++  }
++
++  girara_list_append(plugin_manager->utility_plugins, plugin);
++  girara_debug("utility plugin: registered %s", plugin->definition ? plugin->definition->name : "unknown");
++  return true;
++}
++
++static void load_utility_plugin(zathura_plugin_manager_t* plugin_manager, const char* plugindir, const char* name) {
++  char* path = g_build_filename(plugindir, name, NULL);
++  if (g_file_test(path, G_FILE_TEST_IS_REGULAR) == 0) {
++    g_free(path);
++    return;
++  }
++
++  if (check_suffix(path) == false) {
++    g_free(path);
++    return;
++  }
++
++  /* load plugin */
++  GModule* handle = g_module_open(path, G_MODULE_BIND_LOCAL);
++  if (handle == NULL) {
++    g_free(path);
++    return;
++  }
++
++  /* check for utility plugin symbol */
++  const zathura_utility_plugin_definition_t* utility_plugin_definition = NULL;
++  if (g_module_symbol(handle, G_STRINGIFY(ZATHURA_UTILITY_PLUGIN_DEFINITION_SYMBOL), (void**)&utility_plugin_definition) == FALSE ||
++      utility_plugin_definition == NULL) {
++    /* Not a utility plugin, continue with regular plugin loading */
++    g_module_close(handle);
++    g_free(path);
++    return;
++  }
++
++  /* check name */
++  if (utility_plugin_definition->name == NULL) {
++    girara_error("Utility plugin has no name.");
++    g_free(path);
++    g_module_close(handle);
++    return;
++  }
++
++  /* check init function */
++  if (utility_plugin_definition->init_function == NULL) {
++    girara_error("Utility plugin is missing init function.");
++    g_free(path);
++    g_module_close(handle);
++    return;
++  }
++
++  zathura_plugin_t* plugin = g_try_malloc0(sizeof(zathura_plugin_t));
++  if (plugin == NULL) {
++    girara_error("Failed to allocate memory for utility plugin.");
++    g_free(path);
++    g_module_close(handle);
++    return;
++  }
++
++  plugin->definition    = (const zathura_plugin_definition_t*)utility_plugin_definition;
++  plugin->content_types = NULL; /* Utility plugins don't handle content types */
++  plugin->handle        = handle;
++  plugin->path          = path;
++
++  bool ret = register_utility_plugin(plugin_manager, plugin);
++  if (ret == false) {
++    girara_error("Could not register utility plugin '%s'.", path);
++    zathura_utility_plugin_free(plugin);
++  } else {
++    girara_debug("Successfully loaded utility plugin from '%s'.", path);
++    girara_debug("utility plugin %s: version %u.%u.%u", utility_plugin_definition->name, 
++                 utility_plugin_definition->version.major,
++                 utility_plugin_definition->version.minor, 
++                 utility_plugin_definition->version.rev);
++  }
++}
++
+ static void load_plugin(zathura_plugin_manager_t* plugin_manager, const char* plugindir, const char* name) {
+   char* path = g_build_filename(plugindir, name, NULL);
+   if (g_file_test(path, G_FILE_TEST_IS_REGULAR) == 0) {
+@@ -189,6 +238,11 @@ static void load_plugin(zathura_plugin_manager_t* plugin_manager, const char* p
+     return;
+   }
+ 
++  /* First try to load as utility plugin */
++  load_utility_plugin(plugin_manager, plugindir, name);
++
++  /* Then try to load as regular document plugin */
++
+   if (check_suffix(path) == false) {
+     girara_debug("'%s' is not a plugin file. Skipping.", path);
+     g_free(path);
+@@ -296,6 +350,21 @@ bool zathura_plugin_manager_load(zathura_plugin_manager_t* plugin_manager) {
+   return girara_list_size(plugin_manager->plugins) > 0;
+ }
+ 
++void zathura_plugin_manager_init_utility_plugins(const zathura_plugin_manager_t* plugin_manager, zathura_t* zathura) {
++  if (plugin_manager == NULL || plugin_manager->utility_plugins == NULL || zathura == NULL) {
++    return;
++  }
++
++  for (size_t idx = 0; idx != girara_list_size(plugin_manager->utility_plugins); ++idx) {
++    zathura_plugin_t* plugin = girara_list_nth(plugin_manager->utility_plugins, idx);
++    const zathura_utility_plugin_definition_t* def = (const zathura_utility_plugin_definition_t*)plugin->definition;
++    
++    if (def->init_function != NULL) {
++      girara_debug("Initializing utility plugin: %s", def->name);
++      def->init_function(zathura);
++    }
++  }
++}
++
+ const zathura_plugin_t* zathura_plugin_manager_get_plugin(const zathura_plugin_manager_t* plugin_manager,
+                                                           const char* type) {
+   if (plugin_manager == NULL || plugin_manager->type_plugin_mapping == NULL || type == NULL) {
+diff --git a/zathura/zathura.c b/zathura/zathura.c
+index 1234567..abcdefg 100644
+--- a/zathura/zathura.c
++++ b/zathura/zathura.c
+@@ -403,6 +403,9 @@ bool zathura_init(zathura_t* zathura) {
+     girara_warning("Found no plugins. Please install at least one plugin.");
+   }
+ 
++  /* initialize utility plugins */
++  zathura_plugin_manager_init_utility_plugins(zathura->plugins.manager, zathura);
++
+   /* configuration */
+   config_load_default(zathura);
+   config_load_files(zathura);

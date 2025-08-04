@@ -810,3 +810,219 @@ tts_config_save_default(const tts_config_t* config)
     
     return success;
 }
+
+/* Zathura configuration integration */
+
+bool 
+tts_config_register_settings(tts_config_t* config, girara_session_t* session) 
+{
+    if (config == NULL || session == NULL) {
+        return false;
+    }
+    
+    bool all_registered = true;
+    
+    /* Register engine preferences */
+    char* engine_str = g_strdup("piper");
+    all_registered &= girara_setting_add(session, "tts_engine", engine_str, STRING, false,
+                                        "TTS engine to use (piper, speech_dispatcher, espeak, system)", NULL, NULL);
+    
+    char* voice_str = g_strdup("default");
+    all_registered &= girara_setting_add(session, "tts_piper_voice", voice_str, STRING, false,
+                                        "Piper TTS voice name", NULL, NULL);
+    
+    char* speechd_voice_str = g_strdup("default");
+    all_registered &= girara_setting_add(session, "tts_speechd_voice", speechd_voice_str, STRING, false,
+                                        "Speech Dispatcher voice name", NULL, NULL);
+    
+    char* espeak_voice_str = g_strdup("default");
+    all_registered &= girara_setting_add(session, "tts_espeak_voice", espeak_voice_str, STRING, false,
+                                        "eSpeak voice name", NULL, NULL);
+    
+    bool auto_fallback = true;
+    all_registered &= girara_setting_add(session, "tts_auto_fallback", &auto_fallback, BOOLEAN, false,
+                                        "Automatically fallback to other TTS engines if preferred fails", NULL, NULL);
+    
+    char* piper_voice_path = g_strdup("");
+    all_registered &= girara_setting_add(session, "tts_piper_voice_path", piper_voice_path, STRING, false,
+                                        "Path to Piper voice model file", NULL, NULL);
+    
+    /* Register audio settings */
+    float speed = 1.0f;
+    all_registered &= girara_setting_add(session, "tts_speed", &speed, FLOAT, false,
+                                        "TTS reading speed (0.5-3.0)", NULL, NULL);
+    
+    int volume = 80;
+    all_registered &= girara_setting_add(session, "tts_volume", &volume, INT, false,
+                                        "TTS volume level (0-100)", NULL, NULL);
+    
+    int pitch = 0;
+    all_registered &= girara_setting_add(session, "tts_pitch", &pitch, INT, false,
+                                        "TTS pitch adjustment (-50 to 50)", NULL, NULL);
+    
+    /* Register behavior settings */
+    bool auto_continue = true;
+    all_registered &= girara_setting_add(session, "tts_auto_continue_pages", &auto_continue, BOOLEAN, false,
+                                        "Automatically continue reading to next page", NULL, NULL);
+    
+    bool highlight_text = true;
+    all_registered &= girara_setting_add(session, "tts_highlight_text", &highlight_text, BOOLEAN, false,
+                                        "Highlight currently spoken text", NULL, NULL);
+    
+    char* highlight_color = g_strdup("#FFFF00");
+    all_registered &= girara_setting_add(session, "tts_highlight_color", highlight_color, STRING, false,
+                                        "Color for highlighting spoken text", NULL, NULL);
+    
+    bool announce_pages = true;
+    all_registered &= girara_setting_add(session, "tts_announce_page_numbers", &announce_pages, BOOLEAN, false,
+                                        "Announce page numbers when changing pages", NULL, NULL);
+    
+    bool announce_math = true;
+    all_registered &= girara_setting_add(session, "tts_announce_math", &announce_math, BOOLEAN, false,
+                                        "Announce mathematical formulas", NULL, NULL);
+    
+    bool announce_tables = true;
+    all_registered &= girara_setting_add(session, "tts_announce_tables", &announce_tables, BOOLEAN, false,
+                                        "Announce table structure", NULL, NULL);
+    
+    bool announce_links = true;
+    all_registered &= girara_setting_add(session, "tts_announce_links", &announce_links, BOOLEAN, false,
+                                        "Announce hyperlinks", NULL, NULL);
+    
+    /* Register UI settings */
+    bool show_status = true;
+    all_registered &= girara_setting_add(session, "tts_show_status", &show_status, BOOLEAN, false,
+                                        "Show TTS status messages", NULL, NULL);
+    
+    bool show_progress = true;
+    all_registered &= girara_setting_add(session, "tts_show_progress", &show_progress, BOOLEAN, false,
+                                        "Show TTS progress indicator", NULL, NULL);
+    
+    /* Register advanced settings */
+    char* extraction_method = g_strdup("auto");
+    all_registered &= girara_setting_add(session, "tts_extraction_method", extraction_method, STRING, false,
+                                        "Text extraction method (auto, simple, advanced)", NULL, NULL);
+    
+    bool optimize_reading = true;
+    all_registered &= girara_setting_add(session, "tts_optimize_reading_order", &optimize_reading, BOOLEAN, false,
+                                        "Optimize text reading order", NULL, NULL);
+    
+    int sentence_pause = 100;
+    all_registered &= girara_setting_add(session, "tts_sentence_pause", &sentence_pause, INT, false,
+                                        "Pause between sentences in milliseconds", NULL, NULL);
+    
+    int paragraph_pause = 300;
+    all_registered &= girara_setting_add(session, "tts_paragraph_pause", &paragraph_pause, INT, false,
+                                        "Pause between paragraphs in milliseconds", NULL, NULL);
+    
+    if (!all_registered) {
+        girara_error("Failed to register some TTS configuration options");
+        return false;
+    }
+    
+    girara_info("Successfully registered all TTS configuration options with Zathura");
+    return true;
+}
+
+bool 
+tts_config_load_from_zathura(tts_config_t* config, girara_session_t* session) 
+{
+    if (config == NULL || session == NULL) {
+        return false;
+    }
+    
+    /* Load engine preferences */
+    char* engine_str = NULL;
+    if (girara_setting_get(session, "tts_engine", &engine_str) && engine_str != NULL) {
+        if (g_strcmp0(engine_str, "piper") == 0) {
+            config->preferred_engine = TTS_ENGINE_PIPER;
+        } else if (g_strcmp0(engine_str, "speech_dispatcher") == 0) {
+            config->preferred_engine = TTS_ENGINE_SPEECH_DISPATCHER;
+        } else if (g_strcmp0(engine_str, "espeak") == 0) {
+            config->preferred_engine = TTS_ENGINE_ESPEAK;
+        } else if (g_strcmp0(engine_str, "system") == 0) {
+            config->preferred_engine = TTS_ENGINE_SYSTEM;
+        }
+    }
+    
+    char* voice_str = NULL;
+    if (girara_setting_get(session, "tts_piper_voice", &voice_str) && voice_str != NULL) {
+        g_free(config->preferred_voice);
+        config->preferred_voice = g_strdup(voice_str);
+    }
+    
+    /* Load audio settings */
+    float speed;
+    if (girara_setting_get(session, "tts_speed", &speed)) {
+        if (tts_config_validate_speed(speed)) {
+            config->default_speed = speed;
+        }
+    }
+    
+    int volume;
+    if (girara_setting_get(session, "tts_volume", &volume)) {
+        if (tts_config_validate_volume(volume)) {
+            config->default_volume = volume;
+        }
+    }
+    
+    int pitch;
+    if (girara_setting_get(session, "tts_pitch", &pitch)) {
+        if (tts_config_validate_pitch(pitch)) {
+            config->default_pitch = pitch;
+        }
+    }
+    
+    /* Load behavior settings */
+    bool auto_continue;
+    if (girara_setting_get(session, "tts_auto_continue_pages", &auto_continue)) {
+        config->auto_continue_pages = auto_continue;
+    }
+    
+    bool highlight_text;
+    if (girara_setting_get(session, "tts_highlight_text", &highlight_text)) {
+        config->highlight_spoken_text = highlight_text;
+    }
+    
+    bool announce_pages;
+    if (girara_setting_get(session, "tts_announce_page_numbers", &announce_pages)) {
+        config->announce_page_numbers = announce_pages;
+    }
+    
+    bool announce_math;
+    if (girara_setting_get(session, "tts_announce_math", &announce_math)) {
+        config->announce_headings = announce_math; /* Map to headings for now */
+    }
+    
+    bool announce_tables;
+    if (girara_setting_get(session, "tts_announce_tables", &announce_tables)) {
+        config->announce_tables = announce_tables;
+    }
+    
+    bool announce_links;
+    if (girara_setting_get(session, "tts_announce_links", &announce_links)) {
+        config->announce_links = announce_links;
+    }
+    
+    /* Load UI settings */
+    bool show_status;
+    if (girara_setting_get(session, "tts_show_status", &show_status)) {
+        config->show_status_messages = show_status;
+    }
+    
+    bool show_progress;
+    if (girara_setting_get(session, "tts_show_progress", &show_progress)) {
+        config->show_progress_indicator = show_progress;
+    }
+    
+    /* Load advanced settings */
+    int sentence_pause;
+    if (girara_setting_get(session, "tts_sentence_pause", &sentence_pause)) {
+        if (sentence_pause >= 0) {
+            config->segment_pause_ms = sentence_pause;
+        }
+    }
+    
+    girara_info("Successfully loaded TTS configuration from Zathura settings");
+    return true;
+}

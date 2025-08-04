@@ -13,7 +13,7 @@
 #ifndef ZATHURA_TTS_PLUGIN_H
 #define ZATHURA_TTS_PLUGIN_H
 
-#include <zathura/plugin-api.h>
+#include "plugin-api.h"
 #include <girara/types.h>
 #include <glib.h>
 

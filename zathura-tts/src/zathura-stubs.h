@@ -16,6 +16,7 @@
 /* Stub function declarations */
 
 girara_session_t* zathura_get_session(zathura_t* zathura);
+zathura_t* zathura_document_get_zathura(zathura_document_t* document);
 zathura_document_t* zathura_get_document(zathura_t* zathura);
 unsigned int zathura_document_get_current_page_number(zathura_document_t* document);
 zathura_page_t* zathura_document_get_page(zathura_document_t* document, unsigned int page_number);

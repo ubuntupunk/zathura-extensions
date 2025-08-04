@@ -22,6 +22,14 @@ zathura_get_session(zathura_t* zathura)
     return NULL; /* Return NULL for now - tests should handle this gracefully */
 }
 
+zathura_t*
+zathura_document_get_zathura(zathura_document_t* document)
+{
+    /* This is a stub - in real Zathura, this would return the zathura instance from document */
+    (void)document;
+    return NULL; /* Return NULL for now - tests should handle this gracefully */
+}
+
 zathura_document_t* 
 zathura_get_document(zathura_t* zathura) 
 {

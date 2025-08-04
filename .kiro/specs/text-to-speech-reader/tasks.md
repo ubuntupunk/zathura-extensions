@@ -123,7 +123,7 @@
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
 - [x] 10. Add documentation and installation support
-  - [ ] 10.1 Create user documentation
+  - [x] 10.1 Create user documentation
     - Write installation instructions including Piper-TTS setup
     - Document keyboard shortcuts and usage
     - Create troubleshooting guide for common issues
@@ -163,3 +163,46 @@
     - Remove conditional compilation as stubs are needed for both scenarios
     - Document plugin architecture insights for future development
     - _Requirements: 5.1, 5.3, 5.4_
+
+- [x] 12. Implement Utility Plugin Architecture
+  - [x] 12.1 Patch Zathura source with utility plugin support
+    - Add utility plugin definition structures to plugin-api.h
+    - Implement utility plugin loading and registration in plugin.c
+    - Add utility plugin initialization call to zathura.c startup sequence
+    - Create ZATHURA_UTILITY_PLUGIN_REGISTER macro for plugin registration
+    - _Requirements: 5.1, 5.2, 5.3_
+
+  - [x] 12.2 Update TTS plugin to use utility plugin system
+    - Convert TTS plugin from document plugin to utility plugin
+    - Implement early configuration registration before Zathura config loading
+    - Fix header includes to use local modified Zathura headers
+    - Create zathura-version.h file for build compatibility
+    - _Requirements: 5.1, 5.2, 2.4_
+
+  - [x] 12.3 Resolve build system integration issues
+    - Update TTS plugin meson.build to use local Zathura headers
+    - Fix macro definitions and includes (ZATHURA_PLUGIN_API, G_STRINGIFY)
+    - Successfully compile TTS plugin with utility plugin registration
+    - Install TTS plugin to system plugin directory
+    - _Requirements: 5.1, 5.3, 5.4_
+
+- [-] 13. System Integration and Testing
+  - [-] 13.1 Prepare clean system environment
+    - Remove existing system Zathura installation to avoid conflicts
+    - Install required build dependencies (libmagic-dev, etc.)
+    - Ensure clean plugin directory for testing
+    - _Requirements: 6.3, 6.4_
+
+  - [-] 13.2 Build and install patched Zathura
+    - Build modified Zathura with utility plugin support
+    - Install patched Zathura to system
+    - Verify utility plugin loading mechanism works
+    - Test TTS configuration option registration
+    - _Requirements: 5.1, 5.2, 2.4_
+
+  - [-] 13.3 End-to-end TTS functionality testing
+    - Test TTS plugin loading and initialization
+    - Verify configuration options are recognized by Zathura
+    - Test basic TTS functionality with PDF documents
+    - Validate keyboard shortcuts and UI integration
+    - _Requirements: 1.1, 1.2, 1.3, 2.1, 3.1_

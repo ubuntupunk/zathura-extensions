@@ -3,6 +3,8 @@
 
 #include <glib.h>
 #include <stdbool.h>
+#include <girara/session.h>
+#include <girara/settings.h>
 #include "tts-engine.h"
 
 /* Forward declaration to match plugin.h */
@@ -120,5 +122,9 @@ char* tts_config_get_default_path(void);
 void tts_config_mark_modified(tts_config_t* config);
 bool tts_config_is_modified(const tts_config_t* config);
 void tts_config_clear_modified(tts_config_t* config);
+
+/* Zathura configuration integration */
+bool tts_config_register_settings(tts_config_t* config, girara_session_t* session);
+bool tts_config_load_from_zathura(tts_config_t* config, girara_session_t* session);
 
 #endif /* TTS_CONFIG_H */

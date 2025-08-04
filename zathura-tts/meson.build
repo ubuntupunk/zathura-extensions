@@ -12,19 +12,22 @@ plugin_name = 'zathura-tts'
 plugin_api_version = '4'
 
 # Dependencies
-zathura_dep = dependency('zathura', version: '>=0.5.0', required: false)
+# Use local Zathura source with utility plugin support
+zathura_inc = include_directories('../zathura/zathura')
 girara_dep = dependency('girara-gtk3', version: '>=0.4.0', required: false)
 glib_dep = dependency('glib-2.0', version: '>=2.50')
 gtk_dep = dependency('gtk+-3.0', version: '>=3.22')
 
-# Fallback to pkg-config if direct dependencies not found
-if not zathura_dep.found()
-  zathura_dep = dependency('zathura', method: 'pkg-config', required: true)
-endif
-
+# Fallback to pkg-config for girara if not found
 if not girara_dep.found()
   girara_dep = dependency('girara-gtk3', method: 'pkg-config', required: true)
 endif
+
+# Create a dummy zathura dependency since we're using local headers
+zathura_dep = declare_dependency(
+  include_directories: zathura_inc,
+  compile_args: ['-DZATHURA_API_VERSION=4', '-DZATHURA_ABI_VERSION=4']
+)
 
 # Optional dependencies for TTS engines
 speechd_dep = dependency('speech-dispatcher', required: false)
@@ -76,7 +79,7 @@ plugin = shared_library(
   dependencies: plugin_dependencies,
   include_directories: inc,
   install: true,
-  install_dir: zathura_dep.get_variable('plugindir'),
+  install_dir: '/usr/lib/x86_64-linux-gnu/zathura',
   name_prefix: '',
 )
 
@@ -86,7 +89,7 @@ plugin_desktop = configure_file(
   output: 'org.pwmt.zathura-tts.desktop',
   configuration: conf_data,
   install: true,
-  install_dir: zathura_dep.get_variable('plugindir'),
+  install_dir: '/usr/lib/x86_64-linux-gnu/zathura',
 )
 
 # Tests subdirectory (conditional)
