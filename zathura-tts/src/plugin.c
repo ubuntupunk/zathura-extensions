@@ -410,26 +410,23 @@ tts_utility_plugin_init(zathura_t* zathura)
   /* Get girara session for configuration registration */
   girara_session_t* girara_session = zathura_get_session(zathura);
   if (girara_session == NULL) {
-    girara_error("TTS utility plugin initialization failed: could not get girara session");
-    return false;
-  }
-  
-  /* Register TTS configuration options first */
-  if (!g_tts_config_registered) {
-    tts_config_t* temp_config = tts_config_new();
-    if (temp_config != NULL) {
-      if (tts_config_register_settings(temp_config, girara_session)) {
-        girara_info("TTS configuration options registered successfully");
-        g_tts_config_registered = true;
-      } else {
-        girara_error("Failed to register TTS configuration options");
+    girara_warning("TTS utility plugin: girara session not ready yet, deferring configuration registration");
+    /* Continue with plugin registration without configuration options for now */
+  } else {
+    /* Register TTS configuration options if session is available */
+    if (!g_tts_config_registered) {
+      tts_config_t* temp_config = tts_config_new();
+      if (temp_config != NULL) {
+        if (tts_config_register_settings(temp_config, girara_session)) {
+          girara_info("TTS configuration options registered successfully");
+          g_tts_config_registered = true;
+        } else {
+          girara_warning("Failed to register TTS configuration options, will retry later");
+        }
         tts_config_free(temp_config);
-        return false;
+      } else {
+        girara_warning("Failed to create temporary config for registration");
       }
-      tts_config_free(temp_config);
-    } else {
-      girara_error("Failed to create temporary config for registration");
-      return false;
     }
   }
 

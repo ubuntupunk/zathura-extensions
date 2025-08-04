@@ -1,0 +1,6 @@
+# TTS Configuration Test
+set tts-enabled true
+set tts-speed 1.0
+set tts-voice "default"
+set tts-engine "piper"
+set tts-debug-mode true

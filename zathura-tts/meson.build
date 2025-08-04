@@ -9,24 +9,21 @@ project('zathura-tts', 'c',
 
 # Plugin information
 plugin_name = 'zathura-tts'
-plugin_api_version = '4'
+plugin_api_version = '6'
 
 # Dependencies
-# Use local Zathura source with utility plugin support
-zathura_inc = include_directories('../zathura/zathura')
-girara_dep = dependency('girara-gtk3', version: '>=0.4.0', required: false)
+# Use installed Zathura headers
+zathura_inc = include_directories('/usr/local/include/zathura')
 glib_dep = dependency('glib-2.0', version: '>=2.50')
 gtk_dep = dependency('gtk+-3.0', version: '>=3.22')
 
-# Fallback to pkg-config for girara if not found
-if not girara_dep.found()
-  girara_dep = dependency('girara-gtk3', method: 'pkg-config', required: true)
-endif
+# Use the installed girara library
+girara_dep = dependency('girara-gtk3', method: 'pkg-config', required: true)
 
 # Create a dummy zathura dependency since we're using local headers
 zathura_dep = declare_dependency(
   include_directories: zathura_inc,
-  compile_args: ['-DZATHURA_API_VERSION=4', '-DZATHURA_ABI_VERSION=4']
+  compile_args: ['-DZATHURA_API_VERSION=6', '-DZATHURA_ABI_VERSION=7']
 )
 
 # Optional dependencies for TTS engines

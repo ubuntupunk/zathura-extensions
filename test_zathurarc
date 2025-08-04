@@ -1,6 +1,4 @@
-# Test configuration for TTS plugin
-set tts_engine "piper"
-set tts_speed 1.5
-set tts_volume 90
-set tts_highlight_text true
-set tts_auto_continue_pages true
+# Test configuration file for TTS
+set tts-enabled true
+set tts-speed 1.0
+set tts-voice "default"
