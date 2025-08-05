@@ -122,6 +122,30 @@ headers = files(
 - Clear API boundaries limit what utility plugins can access
 - Plugin loading is isolated so failures don't affect core functionality
 
+## Compatibility Considerations
+
+### GLib Version Compatibility
+During development, we encountered some compatibility issues with newer GLib versions that should be noted for upstream integration:
+
+#### Issues Encountered
+- **Deprecated Function Warnings**: Some GLib functions used in the original codebase have been deprecated in newer versions
+- **API Changes**: Minor changes in GLib's memory management and string handling APIs
+- **Build System Dependencies**: Meson build configuration may need updates for newer GLib versions
+
+#### Current Status
+- ✅ **Working Configuration**: Tested and working with GLib 2.74.6 (Debian 12)
+- ⚠️ **Upstream Sync**: Our fork may not be fully synchronized with latest upstream Zathura development
+- 📋 **Recommendation**: Before upstream integration, a full compatibility review with latest GLib versions is recommended
+
+#### For Upstream Integration
+When preparing this for upstream contribution, consider:
+1. **GLib Version Testing**: Test with multiple GLib versions (2.50+, 2.60+, 2.70+)
+2. **Deprecation Warnings**: Address any deprecated function usage
+3. **CI/CD Updates**: Ensure build system works with various GLib versions
+4. **Documentation Updates**: Update minimum GLib version requirements if needed
+
+This ensures the utility plugin architecture works reliably across different system configurations.
+
 ## Testing Results
 
 ### Plugin Loading

@@ -59,6 +59,13 @@ This TTS plugin requires a **modified version of Zathura** with utility plugin s
 - **GTK+ 3**: Version 3.22 or higher
 - **Speech Dispatcher** (optional, for system TTS)
 
+### 📋 **Compatibility Notes**
+
+- **GLib Version**: Tested with GLib 2.74.6 (Debian 12). May need adjustments for newer GLib versions
+- **Upstream Sync**: Our Zathura fork may not be fully synchronized with latest upstream development
+- **Build Dependencies**: Ensure you have compatible versions of girara-gtk3, GTK+3, and related libraries
+- **Feature Branch**: Our modifications are in the `feature/utility-plugin-support` branch of the fork
+
 ### Python Dependencies
 - **Python**: Version 3.8 or higher
 - **piper-tts**: Version 1.2.0 or higher
