@@ -22,8 +22,29 @@ This plugin allows you to listen to your PDF documents directly within Zathura, 
 
 ## Requirements
 
+### ⚠️ **Important: Modified Zathura Required**
+
+This TTS plugin requires a **modified version of Zathura** with utility plugin support. The standard Zathura from package managers will **not work**.
+
+**Two options to get the required Zathura:**
+
+1. **Use our pre-built version** (included as submodule):
+   ```bash
+   git clone --recursive https://github.com/ubuntupunk/zathura-liberated.git
+   cd zathura-liberated
+   # Build and install modified Zathura (see Installation section)
+   ```
+
+2. **Apply our patch to upstream Zathura**:
+   ```bash
+   git clone https://github.com/pwmt/zathura.git
+   cd zathura
+   git apply ../0001-Add-utility-plugin-support-and-TTS-API-functions.patch
+   # Build and install
+   ```
+
 ### System Dependencies
-- **Zathura**: Version 0.5.0 or higher
+- **Modified Zathura**: With utility plugin support (see above)
 - **girara-gtk3**: Version 0.4.0 or higher
 - **GLib**: Version 2.50 or higher
 - **GTK+ 3**: Version 3.22 or higher
@@ -35,31 +56,57 @@ This plugin allows you to listen to your PDF documents directly within Zathura, 
 
 ## Installation
 
-1.  **Install System Dependencies**:
-    Ensure you have Zathura and its development libraries installed. If you want to use the system's TTS, install Speech Dispatcher.
+### Step 1: Build Modified Zathura
 
-    ```bash
-    # Example for Arch Linux
-    sudo pacman -S zathura zathura-devel girara speech-dispatcher
-    ```
+Since this plugin requires a modified version of Zathura, you must build and install it first:
 
-2.  **Install Piper-TTS**:
-    For the best audio quality, install the Piper-TTS Python package.
+```bash
+# Clone with submodules
+git clone --recursive https://github.com/ubuntupunk/zathura-liberated.git
+cd zathura-liberated
 
-    ```bash
-    pip install piper
-    ```
+# Build and install modified Zathura
+cd zathura
+meson setup builddir
+meson compile -C builddir
+sudo meson install -C builddir
 
-3.  **Build the Plugin**:
-    Clone the repository and use Meson to build and install the plugin.
+# Build and install PDF plugin
+cd ../zathura-pdf-poppler
+meson setup builddir
+meson compile -C builddir
+sudo meson install -C builddir
 
-    ```bash
-    git clone https://github.com/zathura-pdf/zathura-tts.git
-    cd zathura-tts
-    meson setup build
-    meson compile -C build
-    sudo meson install -C build
-    ```
+cd ..
+```
+
+### Step 2: Install System Dependencies
+
+```bash
+# Example for Debian/Ubuntu
+sudo apt install libgirara-dev libgtk-3-dev libglib2.0-dev speech-dispatcher
+
+# Example for Arch Linux
+sudo pacman -S girara gtk3 glib2 speech-dispatcher
+```
+
+### Step 3: Install Piper-TTS
+For the best audio quality, install the Piper-TTS Python package.
+
+```bash
+pip install piper
+```
+
+### Step 4: Build the TTS Plugin
+Build and install the TTS plugin:
+
+```bash
+# From the zathura-liberated directory
+cd zathura-tts
+meson setup builddir
+meson compile -C builddir
+sudo meson install -C builddir
+```
 
 4.  **Download Piper Voices**:
     Piper requires voice models to function. You can download high-quality voices from the [Piper Voices repository on Hugging Face](https://huggingface.co/rhasspy/piper-voices/tree/main).
