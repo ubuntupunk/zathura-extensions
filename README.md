@@ -8,6 +8,20 @@ A powerful text-to-speech (TTS) extension for the [Zathura PDF viewer](https://w
 
 This plugin allows you to listen to your PDF documents directly within Zathura, with advanced controls for playback, voice customization, and navigation. It integrates with modern, high-quality TTS engines to deliver clear and natural-sounding speech.
 
+## 🏗️ **Project Structure**
+
+This repository contains both the TTS plugin and a modified version of Zathura with utility plugin support:
+
+```
+zathura-liberated/
+├── zathura-tts/           # TTS plugin implementation
+├── zathura/               # Modified Zathura with utility plugin support (submodule)
+├── zathura-pdf-poppler/   # PDF plugin (submodule)
+└── docs/                  # Comprehensive documentation
+```
+
+**Why this structure?** We needed to extend Zathura's core to support utility plugins (vs just document plugins). This monorepo approach makes development and installation much simpler while we prove the concept. Once utility plugins are accepted upstream, this could be split into separate repositories.
+
 ## Features
 
 - **Multiple TTS Engines**: Supports **Piper-TTS** (high-quality neural voices), **Speech Dispatcher** (system integration), and **espeak-ng** (reliable fallback).
