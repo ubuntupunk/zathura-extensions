@@ -1,4 +1,4 @@
-project('zathura-tts', 'c',
+giggproject('zathura-tts', 'c',
   version: '1.0.0',
   meson_version: '>=0.61',
   default_options: [
@@ -19,6 +19,9 @@ gtk_dep = dependency('gtk+-3.0', version: '>=3.22')
 
 # Use the installed girara library
 girara_dep = dependency('girara-gtk3', method: 'pkg-config', required: true)
+
+# Get the plugin directory from zathura pkg-config
+plugin_dir = '/usr/local/lib/x86_64-linux-gnu/zathura'
 
 # Create a dummy zathura dependency since we're using local headers
 zathura_dep = declare_dependency(
@@ -54,7 +57,7 @@ plugin_sources = [
   'src/tts-ui-controller.c',
   'src/tts-config.c',
   'src/tts-error.c',
-  'src/zathura-stubs.c',
+  # Note: zathura-stubs.c is NOT included - Zathura provides these functions at runtime
 ]
 
 # Plugin dependencies
@@ -76,8 +79,11 @@ plugin = shared_library(
   dependencies: plugin_dependencies,
   include_directories: inc,
   install: true,
-  install_dir: '/usr/lib/x86_64-linux-gnu/zathura',
+  install_dir: plugin_dir,
   name_prefix: '',
+  # Allow undefined symbols - Zathura will provide them at runtime
+  link_args: ['-Wl,--unresolved-symbols=ignore-all'],
+  override_options: ['b_lundef=false'],
 )
 
 # Plugin metadata file
@@ -86,7 +92,7 @@ plugin_desktop = configure_file(
   output: 'org.pwmt.zathura-tts.desktop',
   configuration: conf_data,
   install: true,
-  install_dir: '/usr/lib/x86_64-linux-gnu/zathura',
+  install_dir: plugin_dir,
 )
 
 # Tests subdirectory (conditional)

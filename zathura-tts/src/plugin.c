@@ -4,7 +4,7 @@
 #include "tts-ui-controller.h"
 #include "tts-config.h"
 #include "tts-error.h"
-#include "zathura-stubs.h"
+#include "zathura-plugin.h"
 #include "plugin-api.h"
 #include <girara/utils.h>
 #include <string.h>
@@ -15,6 +15,9 @@ static tts_plugin_t* g_tts_plugin = NULL;
 
 /* Global initialization flag */
 static bool g_tts_config_registered = false;
+
+/* Global zathura instance for deferred configuration registration */
+static zathura_t* g_tts_plugin_zathura_instance = NULL;
 
 /* Plugin registration function */
 zathura_error_t
@@ -396,6 +399,41 @@ tts_plugin_get_instance(void)
   return g_tts_plugin;
 }
 
+/* Function to complete deferred initialization when girara session is ready */
+zathura_error_t
+tts_plugin_complete_initialization(void)
+{
+  if (g_tts_plugin_zathura_instance == NULL) {
+    girara_error("TTS plugin deferred initialization failed: no zathura instance stored");
+    return ZATHURA_ERROR_UNKNOWN;
+  }
+
+  if (g_tts_plugin != NULL && g_tts_plugin->initialized) {
+    girara_info("TTS plugin already fully initialized");
+    return ZATHURA_ERROR_OK;
+  }
+
+  girara_info("Completing deferred TTS plugin initialization...");
+
+  /* Check if girara session is now available */
+  girara_session_t* girara_session = zathura_get_session(g_tts_plugin_zathura_instance);
+  if (girara_session == NULL) {
+    girara_warning("TTS plugin deferred initialization: girara session still not ready");
+    return ZATHURA_ERROR_UNKNOWN;
+  }
+
+  /* Now we can complete the full initialization */
+  zathura_error_t result = tts_plugin_init(g_tts_plugin_zathura_instance);
+  if (result == ZATHURA_ERROR_OK) {
+    girara_info("TTS plugin deferred initialization completed successfully");
+    g_tts_config_registered = true;
+  } else {
+    girara_error("TTS plugin deferred initialization failed: %d", result);
+  }
+
+  return result;
+}
+
 /* Utility plugin initialization function */
 static bool
 tts_utility_plugin_init(zathura_t* zathura)
@@ -407,42 +445,20 @@ tts_utility_plugin_init(zathura_t* zathura)
 
   girara_info("Initializing TTS utility plugin...");
 
-  /* Get girara session for configuration registration */
-  girara_session_t* girara_session = zathura_get_session(zathura);
-  if (girara_session == NULL) {
-    girara_warning("TTS utility plugin: girara session not ready yet, deferring configuration registration");
-    /* Continue with plugin registration without configuration options for now */
-  } else {
-    /* Register TTS configuration options if session is available */
-    if (!g_tts_config_registered) {
-      tts_config_t* temp_config = tts_config_new();
-      if (temp_config != NULL) {
-        if (tts_config_register_settings(temp_config, girara_session)) {
-          girara_info("TTS configuration options registered successfully");
-          g_tts_config_registered = true;
-        } else {
-          girara_warning("Failed to register TTS configuration options, will retry later");
-        }
-        tts_config_free(temp_config);
-      } else {
-        girara_warning("Failed to create temporary config for registration");
-      }
-    }
-  }
+  /* Store zathura instance for later configuration registration */
+  g_tts_plugin_zathura_instance = zathura;
+  
+  girara_info("TTS utility plugin: deferring configuration registration until session is ready");
 
-  /* Register and initialize the TTS plugin */
+  /* Register the TTS plugin but defer full initialization */
   zathura_error_t result = tts_plugin_register(zathura);
   if (result != ZATHURA_ERROR_OK) {
     girara_error("Failed to register TTS plugin: %d", result);
     return false;
   }
 
-  result = tts_plugin_init(zathura);
-  if (result != ZATHURA_ERROR_OK) {
-    girara_error("Failed to initialize TTS plugin: %d", result);
-    tts_plugin_cleanup();
-    return false;
-  }
+  /* Don't call tts_plugin_init() here - it will be called later when session is ready */
+  girara_info("TTS plugin registered, full initialization deferred until session is ready");
 
   girara_info("TTS utility plugin initialized successfully");
   return true;

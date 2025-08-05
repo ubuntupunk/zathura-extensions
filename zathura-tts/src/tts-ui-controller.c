@@ -6,7 +6,7 @@
 #include "tts-audio-controller.h"
 #include "tts-text-extractor.h"
 #include "tts-error.h"
-#include "zathura-stubs.h"
+#include "zathura-plugin.h"
 #include <girara/session.h>
 #include <girara/statusbar.h>
 #include <girara/utils.h>
@@ -326,9 +326,7 @@ tts_ui_controller_show_status(tts_ui_controller_t* controller, const char* messa
     
     /* Display in Zathura's status bar */
     if (controller->session != NULL) {
-        girara_statusbar_item_set_text(controller->session, 
-                                      girara_statusbar_item_get_default(controller->session), 
-                                      message);
+        girara_notify(controller->session, GIRARA_INFO, "TTS: %s", message);
     }
     
     /* Set timeout to clear status */
@@ -356,9 +354,7 @@ tts_ui_controller_clear_status(tts_ui_controller_t* controller)
     
     /* Clear status bar */
     if (controller->session != NULL) {
-        girara_statusbar_item_set_text(controller->session, 
-                                      girara_statusbar_item_get_default(controller->session), 
-                                      "");
+        girara_notify(controller->session, GIRARA_INFO, "");
     }
 }
 /* S
