@@ -32,6 +32,7 @@ This TTS plugin requires a **modified version of Zathura** with utility plugin s
    ```bash
    git clone --recursive https://github.com/ubuntupunk/zathura-liberated.git
    cd zathura-liberated
+   # The submodule automatically points to our fork with utility plugin support
    # Build and install modified Zathura (see Installation section)
    ```
 
@@ -40,6 +41,14 @@ This TTS plugin requires a **modified version of Zathura** with utility plugin s
    git clone https://github.com/pwmt/zathura.git
    cd zathura
    git apply ../0001-Add-utility-plugin-support-and-TTS-API-functions.patch
+   # Build and install
+   ```
+
+3. **Use our fork directly**:
+   ```bash
+   git clone https://github.com/ubuntupunk/zathura.git
+   cd zathura
+   git checkout feature/utility-plugin-support
    # Build and install
    ```
 
