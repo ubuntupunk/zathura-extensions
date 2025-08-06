@@ -11,6 +11,7 @@
 #include <girara/statusbar.h>
 #include <girara/utils.h>
 #include <girara/commands.h>
+#include <girara/shortcuts.h>
 #include <zathura/types.h>
 #include <zathura/plugin-api.h>
 #include <zathura/document.h>
@@ -31,12 +32,12 @@ static const struct {
     { GDK_CONTROL_MASK, GDK_KEY_t, NULL, TTS_SHORTCUT_TOGGLE, "Toggle TTS on/off" },
     { GDK_CONTROL_MASK, GDK_KEY_space, NULL, TTS_SHORTCUT_PAUSE_RESUME, "Pause/resume TTS" },
     { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_t, NULL, TTS_SHORTCUT_STOP, "Stop TTS" },
-    { GDK_CONTROL_MASK, GDK_KEY_Right, NULL, TTS_SHORTCUT_NEXT_SEGMENT, "Next text segment" },
-    { GDK_CONTROL_MASK, GDK_KEY_Left, NULL, TTS_SHORTCUT_PREV_SEGMENT, "Previous text segment" },
-    { GDK_CONTROL_MASK, GDK_KEY_plus, NULL, TTS_SHORTCUT_SPEED_UP, "Increase TTS speed" },
-    { GDK_CONTROL_MASK, GDK_KEY_minus, NULL, TTS_SHORTCUT_SPEED_DOWN, "Decrease TTS speed" },
-    { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_plus, NULL, TTS_SHORTCUT_VOLUME_UP, "Increase TTS volume" },
-    { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_minus, NULL, TTS_SHORTCUT_VOLUME_DOWN, "Decrease TTS volume" },
+    { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_Right, NULL, TTS_SHORTCUT_NEXT_SEGMENT, "Next text segment" },
+    { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_Left, NULL, TTS_SHORTCUT_PREV_SEGMENT, "Previous text segment" },
+    { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_equal, NULL, TTS_SHORTCUT_SPEED_UP, "Increase TTS speed" },
+    { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_minus, NULL, TTS_SHORTCUT_SPEED_DOWN, "Decrease TTS speed" },
+    { GDK_CONTROL_MASK | GDK_MOD1_MASK, GDK_KEY_equal, NULL, TTS_SHORTCUT_VOLUME_UP, "Increase TTS volume" },
+    { GDK_CONTROL_MASK | GDK_MOD1_MASK, GDK_KEY_minus, NULL, TTS_SHORTCUT_VOLUME_DOWN, "Decrease TTS volume" },
     { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_s, NULL, TTS_SHORTCUT_SETTINGS, "TTS settings" }
 };
 
@@ -136,8 +137,12 @@ tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller)
     size_t num_shortcuts = sizeof(default_shortcuts) / sizeof(default_shortcuts[0]);
     bool all_registered = true;
     
+    girara_debug("🔧 DEBUG: Registering %zu TTS shortcuts...", num_shortcuts);
+    
     for (size_t i = 0; i < num_shortcuts; i++) {
         const tts_shortcut_t* shortcut = &default_shortcuts[i];
+        
+        girara_debug("🔧 DEBUG: Registering shortcut %zu: %s (action %d)", i, shortcut->description, shortcut->action);
         
         /* Create shortcut info for tracking */
         tts_shortcut_info_t* info = tts_shortcut_info_new(
@@ -295,6 +300,8 @@ tts_shortcut_info_free(tts_shortcut_info_t* info)
     g_free(info);
 }
 
+
+
 /* Status display functions */
 
 static gboolean 
@@ -367,47 +374,66 @@ sc_tts_toggle(girara_session_t* session, girara_argument_t* argument, girara_eve
     (void)event;
     (void)t;
     
+    girara_info("🎯 DEBUG: sc_tts_toggle called - Ctrl+T pressed!");
+    
     tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
     if (controller == NULL || controller->audio_controller == NULL) {
+        girara_info("🚨 DEBUG: sc_tts_toggle - controller or audio_controller is NULL");
         return false;
     }
     
+    girara_info("✅ DEBUG: sc_tts_toggle - controller found, checking current state...");
+    
     tts_audio_state_t current_state = tts_audio_controller_get_state(controller->audio_controller);
+    girara_info("🔍 DEBUG: sc_tts_toggle - current audio state: %d", current_state);
     
     if (current_state == TTS_AUDIO_STATE_STOPPED) {
+        girara_info("🔍 DEBUG: sc_tts_toggle - starting TTS, getting document...");
+        
         /* Start TTS - extract text from current page */
         zathura_document_t* document = zathura_get_document(controller->zathura);
         if (document == NULL) {
+            girara_info("🚨 DEBUG: sc_tts_toggle - document is NULL!");
             tts_ui_controller_show_status(controller, "TTS: No document loaded", 2000);
             return false;
         }
+        girara_info("✅ DEBUG: sc_tts_toggle - document found, getting current page...");
         
         unsigned int current_page_number = zathura_document_get_current_page_number(document);
+        girara_info("🔍 DEBUG: sc_tts_toggle - current page number: %u", current_page_number);
+        
         zathura_page_t* page = zathura_document_get_page(document, current_page_number);
         if (page == NULL) {
+            girara_info("🚨 DEBUG: sc_tts_toggle - page is NULL!");
             tts_ui_controller_show_status(controller, "TTS: Cannot access current page", 2000);
             return false;
         }
+        girara_info("✅ DEBUG: sc_tts_toggle - page found, extracting text...");
         
         /* Extract text segments from current page */
-        zathura_error_t error;
+        zathura_error_t error = ZATHURA_ERROR_OK;
         girara_list_t* segments = tts_extract_text_segments(page, &error);
+        girara_info("🔍 DEBUG: sc_tts_toggle - text extraction result: segments=%p, error=%d", (void*)segments, error);
+        
         if (segments == NULL || girara_list_size(segments) == 0) {
+            girara_info("🚨 DEBUG: sc_tts_toggle - no text segments found (segments=%p, size=%zu)", 
+                        (void*)segments, segments ? girara_list_size(segments) : 0);
             tts_ui_controller_show_status(controller, "TTS: No readable text found on page", 2000);
             if (segments != NULL) {
                 girara_list_free(segments);
             }
             return false;
         }
+        girara_info("✅ DEBUG: sc_tts_toggle - found %zu text segments, starting audio session...", 
+                    girara_list_size(segments));
         
         /* Start TTS session */
         if (tts_audio_controller_start_session(controller->audio_controller, segments)) {
             controller->tts_active = true;
+            girara_info("✅ DEBUG: sc_tts_toggle - audio session started successfully");
             tts_ui_controller_show_status(controller, "TTS: Started reading", 2000);
-            
-            /* Start playing current segment */
-            tts_audio_controller_play_current_segment(controller->audio_controller);
         } else {
+            girara_info("🚨 DEBUG: sc_tts_toggle - failed to start audio session");
             tts_ui_controller_show_status(controller, "TTS: Failed to start session", 2000);
             girara_list_free(segments);
             return false;
@@ -429,10 +455,15 @@ sc_tts_pause_resume(girara_session_t* session, girara_argument_t* argument, gira
     (void)event;
     (void)t;
     
+    girara_debug("🎯 DEBUG: sc_tts_pause_resume called - Ctrl+Space pressed!");
+    
     tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
     if (controller == NULL || controller->audio_controller == NULL) {
+        girara_debug("🚨 DEBUG: sc_tts_pause_resume - controller or audio_controller is NULL");
         return false;
     }
+    
+    girara_debug("✅ DEBUG: sc_tts_pause_resume - controller found, checking current state...");
     
     tts_audio_state_t current_state = tts_audio_controller_get_state(controller->audio_controller);
     
@@ -494,15 +525,8 @@ sc_tts_next_segment(girara_session_t* session, girara_argument_t* argument, gira
         return false;
     }
     
-    if (tts_audio_controller_navigate_to_segment(controller->audio_controller, 1)) {
-        int current_segment = tts_audio_controller_get_current_segment(controller->audio_controller);
-        char* status_msg = g_strdup_printf("TTS: Next segment (%d)", current_segment + 1);
-        tts_ui_controller_show_status(controller, status_msg, 2000);
-        g_free(status_msg);
-    } else {
-        tts_ui_controller_show_status(controller, "TTS: No next segment", 2000);
-        return false;
-    }
+    /* This would need to be implemented in the audio controller */
+    tts_ui_controller_show_status(controller, "TTS: Next segment (not implemented)", 2000);
     
     return true;
 }
@@ -524,15 +548,8 @@ sc_tts_prev_segment(girara_session_t* session, girara_argument_t* argument, gira
         return false;
     }
     
-    if (tts_audio_controller_navigate_to_segment(controller->audio_controller, -1)) {
-        int current_segment = tts_audio_controller_get_current_segment(controller->audio_controller);
-        char* status_msg = g_strdup_printf("TTS: Previous segment (%d)", current_segment + 1);
-        tts_ui_controller_show_status(controller, status_msg, 2000);
-        g_free(status_msg);
-    } else {
-        tts_ui_controller_show_status(controller, "TTS: No previous segment", 2000);
-        return false;
-    }
+    /* This would need to be implemented in the audio controller */
+    tts_ui_controller_show_status(controller, "TTS: Previous segment (not implemented)", 2000);
     
     return true;
 }
@@ -705,6 +722,10 @@ sc_tts_settings(girara_session_t* session, girara_argument_t* argument, girara_e
     
     return true;
 }
+
+/* Shortcut callback implementations */
+
+
 
 /* Visual feedback functions */
 

@@ -224,17 +224,32 @@ void tts_engine_cleanup(tts_engine_t* engine) {
 }
 
 bool tts_engine_speak(tts_engine_t* engine, const char* text, zathura_error_t* error) {
+    girara_info("🎤 DEBUG: tts_engine_speak called - engine=%p, text='%.30s%s'", 
+                (void*)engine, text ? text : "(null)", text && strlen(text) > 30 ? "..." : "");
+    
     if (engine == NULL || text == NULL) {
+        girara_info("🚨 DEBUG: tts_engine_speak - invalid arguments: engine=%p, text=%p", 
+                    (void*)engine, (void*)text);
         if (error) *error = ZATHURA_ERROR_INVALID_ARGUMENTS;
         return false;
     }
     
+    girara_info("🔧 DEBUG: tts_engine_speak - engine type: %s", 
+                engine->name ? engine->name : "unknown");
+    
     if (engine->functions.speak == NULL) {
+        girara_info("🚨 DEBUG: tts_engine_speak - speak function is NULL for engine %s", 
+                    engine->name ? engine->name : "unknown");
         if (error) *error = ZATHURA_ERROR_UNKNOWN;
         return false;
     }
     
-    return engine->functions.speak(engine, text, error);
+    girara_info("🎤 DEBUG: tts_engine_speak - calling engine-specific speak function...");
+    bool result = engine->functions.speak(engine, text, error);
+    girara_info("🎤 DEBUG: tts_engine_speak - engine speak result: %s, error: %d", 
+                result ? "SUCCESS" : "FAILED", error ? *error : -1);
+    
+    return result;
 }
 
 bool tts_engine_pause(tts_engine_t* engine, bool pause, zathura_error_t* error) {

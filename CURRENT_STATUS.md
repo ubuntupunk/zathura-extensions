@@ -1,3 +1,4 @@
+
 # Current Status
 
 This document tracks the current implementation status of the Zathura TTS Reader project.

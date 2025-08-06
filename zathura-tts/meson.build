@@ -1,4 +1,4 @@
-giggproject('zathura-tts', 'c',
+project('zathura-tts', 'c',
   version: '1.0.0',
   meson_version: '>=0.61',
   default_options: [

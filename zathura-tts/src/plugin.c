@@ -448,17 +448,39 @@ tts_utility_plugin_init(zathura_t* zathura)
   /* Store zathura instance for later configuration registration */
   g_tts_plugin_zathura_instance = zathura;
   
-  girara_info("TTS utility plugin: deferring configuration registration until session is ready");
+  /* Check if girara session is already available */
+  girara_session_t* girara_session = zathura_get_session(zathura);
+  if (girara_session != NULL) {
+    girara_info("TTS utility plugin: girara session is ready, proceeding with full initialization");
+    
+    /* Register the TTS plugin and complete initialization immediately */
+    zathura_error_t result = tts_plugin_register(zathura);
+    if (result != ZATHURA_ERROR_OK) {
+      girara_error("Failed to register TTS plugin: %d", result);
+      return false;
+    }
+    
+    result = tts_plugin_init(zathura);
+    if (result != ZATHURA_ERROR_OK) {
+      girara_error("Failed to initialize TTS plugin: %d", result);
+      tts_plugin_cleanup();
+      return false;
+    }
+    
+    girara_info("TTS plugin fully initialized successfully");
+  } else {
+    girara_info("TTS utility plugin: deferring configuration registration until session is ready");
 
-  /* Register the TTS plugin but defer full initialization */
-  zathura_error_t result = tts_plugin_register(zathura);
-  if (result != ZATHURA_ERROR_OK) {
-    girara_error("Failed to register TTS plugin: %d", result);
-    return false;
+    /* Register the TTS plugin but defer full initialization */
+    zathura_error_t result = tts_plugin_register(zathura);
+    if (result != ZATHURA_ERROR_OK) {
+      girara_error("Failed to register TTS plugin: %d", result);
+      return false;
+    }
+
+    /* Don't call tts_plugin_init() here - it will be called later when session is ready */
+    girara_info("TTS plugin registered, full initialization deferred until session is ready");
   }
-
-  /* Don't call tts_plugin_init() here - it will be called later when session is ready */
-  girara_info("TTS plugin registered, full initialization deferred until session is ready");
 
   girara_info("TTS utility plugin initialized successfully");
   return true;

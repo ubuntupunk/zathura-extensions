@@ -1,0 +1,25 @@
+#!/bin/bash
+
+echo "🧪 Testing TTS Shortcuts with Debug Logging"
+echo "============================================="
+echo ""
+echo "Updated TTS Shortcuts (Conflict-Free):"
+echo "- Ctrl+T       : Toggle TTS on/off"
+echo "- Ctrl+P       : Pause/resume TTS"
+echo "- Ctrl+Shift+T : Stop TTS"
+echo "- Ctrl+Shift+→ : Next text segment"
+echo "- Ctrl+Shift+← : Previous text segment"
+echo "- Ctrl+Shift+= : Increase TTS speed"
+echo "- Ctrl+Shift+- : Decrease TTS speed"
+echo "- Ctrl+Alt+=   : Increase TTS volume"
+echo "- Ctrl+Alt+-   : Decrease TTS volume"
+echo "- Ctrl+Shift+S : TTS settings"
+echo ""
+echo "🔍 Starting Zathura with debug logging..."
+echo "   Press Ctrl+T to test TTS toggle"
+echo "   Press Ctrl+P to test TTS pause/resume"
+echo "   Press Ctrl+C to exit"
+echo ""
+
+# Run Zathura with debug logging
+GIRARA_LOG_LEVEL=debug zathura test.pdf 2>&1 | grep -E "(DEBUG|TTS|shortcut|registered)"

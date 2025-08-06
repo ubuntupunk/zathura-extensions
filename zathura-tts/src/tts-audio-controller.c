@@ -425,12 +425,19 @@ layback control functions */
 bool 
 tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* text) 
 {
+    girara_info("🔊 DEBUG: play_text called with text: '%.50s%s'", 
+                text ? text : "(null)", text && strlen(text) > 50 ? "..." : "");
+    
     if (controller == NULL || text == NULL || controller->tts_engine == NULL) {
+        girara_info("🚨 DEBUG: play_text - invalid parameters: controller=%p, text=%p, engine=%p", 
+                    (void*)controller, (void*)text, controller ? controller->tts_engine : NULL);
         return false;
     }
     
     tts_engine_t* engine = (tts_engine_t*)controller->tts_engine;
-    zathura_error_t error;
+    zathura_error_t error = ZATHURA_ERROR_OK;
+    
+    girara_info("🔧 DEBUG: play_text - engine found, configuring...");
     
     g_mutex_lock(&controller->state_mutex);
     
@@ -446,6 +453,8 @@ tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* t
         config->voice_name = NULL; /* Use current voice */
         config->pitch = 0;
         
+        girara_info("🔧 DEBUG: play_text - setting engine config (speed=%.1f, volume=%d)", 
+                    config->speed, config->volume);
         tts_engine_set_config(engine, config, &error);
         tts_engine_config_free(config);
     }
@@ -453,11 +462,16 @@ tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* t
     g_mutex_unlock(&controller->state_mutex);
     
     /* Start speaking the text */
+    girara_info("🎤 DEBUG: play_text - calling tts_engine_speak...");
     bool success = tts_engine_speak(engine, text, &error);
+    girara_info("🎤 DEBUG: play_text - tts_engine_speak result: %s, error: %d", 
+                success ? "SUCCESS" : "FAILED", error);
     
     if (success) {
+        girara_info("✅ DEBUG: play_text - setting state to PLAYING");
         tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PLAYING);
     } else {
+        girara_info("🚨 DEBUG: play_text - setting state to ERROR");
         tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
     }
     
