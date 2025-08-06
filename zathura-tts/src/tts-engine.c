@@ -2,6 +2,7 @@
  * Abstract interface for various TTS engines
  */
 
+#define _DEFAULT_SOURCE
 #include "tts-engine.h"
 #include <girara/log.h>
 #include <string.h>
@@ -580,6 +581,14 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     
     piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
     
+    /* Limit text length to prevent extremely long speech */
+    char* limited_text = NULL;
+    if (strlen(text) > 500) {
+        limited_text = g_strndup(text, 500);
+        girara_info("🔧 DEBUG: piper_engine_speak - text truncated from %zu to 500 chars", strlen(text));
+        text = limited_text;
+    }
+    
     girara_info("🔧 DEBUG: piper_engine_speak - model_path: %s", 
                 piper_data->model_path ? piper_data->model_path : "(null)");
     
@@ -599,13 +608,14 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     if (piper_data->model_path && g_file_test(piper_data->model_path, G_FILE_TEST_EXISTS)) {
         /* Use specific model if available */
         girara_info("🔧 DEBUG: piper_engine_speak - using model: %s", piper_data->model_path);
-        command = g_strdup_printf("cd '%s' && echo '%s' | poetry run piper --model '%s' --output-raw | aplay -r 22050 -f S16_LE -t raw -",
+        command = g_strdup_printf("sh -c \"cd '%s' && echo '%s' | poetry run piper --model '%s' --output-raw | aplay -r 22050 -f S16_LE -t raw -\"",
                                  project_dir, text, piper_data->model_path);
     } else {
         /* Model not found - this will fail since Piper requires a model */
         girara_info("🚨 DEBUG: piper_engine_speak - no model found at: %s", 
                     piper_data->model_path ? piper_data->model_path : "(null)");
         girara_info("🚨 DEBUG: piper_engine_speak - Piper requires a model file, this will fail");
+        if (limited_text) g_free(limited_text);
         if (error) *error = ZATHURA_ERROR_UNKNOWN;
         g_free(project_dir);
         return false;
@@ -614,9 +624,12 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     g_free(project_dir);
     
     if (command == NULL) {
+        if (limited_text) g_free(limited_text);
         if (error) *error = ZATHURA_ERROR_OUT_OF_MEMORY;
         return false;
     }
+    
+    girara_info("🔧 DEBUG: piper_engine_speak - executing command: %s", command);
     
     /* Execute Piper command asynchronously */
     GPid child_pid;
@@ -624,7 +637,11 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     GError* g_error = NULL;
     
     if (!g_shell_parse_argv(command, NULL, &argv, &g_error)) {
+        girara_info("🚨 DEBUG: piper_engine_speak - shell parse failed: %s", 
+                    g_error ? g_error->message : "unknown error");
         g_free(command);
+        if (limited_text) g_free(limited_text);
+        if (g_error) g_error_free(g_error);
         if (error) *error = ZATHURA_ERROR_UNKNOWN;
         return false;
     }
@@ -637,6 +654,9 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     g_free(command);
     
     if (!success) {
+        girara_info("🚨 DEBUG: piper_engine_speak - spawn failed: %s", 
+                    g_error ? g_error->message : "unknown error");
+        if (limited_text) g_free(limited_text);
         if (g_error) {
             g_error_free(g_error);
         }
@@ -644,10 +664,17 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
         return false;
     }
     
+    girara_info("✅ DEBUG: piper_engine_speak - spawn successful, PID: %d", child_pid);
+    
     piper_data->current_process = child_pid;
     piper_data->is_speaking = true;
     piper_data->is_paused = false;
     engine->state = TTS_ENGINE_STATE_SPEAKING;
+    
+    /* Clean up limited text if we created it */
+    if (limited_text) {
+        g_free(limited_text);
+    }
     
     if (error) *error = ZATHURA_ERROR_OK;
     return true;
@@ -696,7 +723,20 @@ static bool piper_engine_stop(tts_engine_t* engine, zathura_error_t* error) {
     
     /* Stop any running process */
     if (piper_data->current_process > 0) {
+        girara_info("🔧 DEBUG: piper_engine_stop - terminating PID: %d", piper_data->current_process);
+        
+        /* First try SIGTERM */
         if (kill(piper_data->current_process, SIGTERM) == 0) {
+            /* Wait briefly for graceful termination */
+            usleep(100000); /* 100ms */
+            
+            /* Check if process is still running */
+            if (kill(piper_data->current_process, 0) == 0) {
+                girara_info("🔧 DEBUG: piper_engine_stop - process still running, using SIGKILL");
+                /* Force kill if still running */
+                kill(piper_data->current_process, SIGKILL);
+            }
+            
             waitpid(piper_data->current_process, NULL, 0);
             piper_data->current_process = 0;
             piper_data->is_speaking = false;
