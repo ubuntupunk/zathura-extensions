@@ -7,6 +7,7 @@
 #include "zathura-plugin.h"
 #include "plugin-api.h"
 #include <girara/utils.h>
+#include <girara/log.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -162,7 +163,14 @@ tts_plugin_init(zathura_t* zathura)
   if (engine_config != NULL) {
     engine_config->speed = tts_config_get_default_speed(session->config);
     engine_config->volume = tts_config_get_default_volume(session->config);
-    engine_config->voice_name = g_strdup(tts_config_get_preferred_voice(session->config));
+    
+    /* Only set voice name if it's not "default" - let engine use its own default */
+    const char* preferred_voice = tts_config_get_preferred_voice(session->config);
+    if (preferred_voice && strcmp(preferred_voice, "default") != 0) {
+      engine_config->voice_name = g_strdup(preferred_voice);
+    } else {
+      engine_config->voice_name = NULL; /* Let engine use its default model */
+    }
     
     if (!tts_engine_init(session->engine, engine_config, &engine_error)) {
       girara_warning("TTS engine initialization failed, continuing with defaults");

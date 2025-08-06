@@ -3,6 +3,7 @@
  */
 
 #include "tts-engine.h"
+#include <girara/log.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -140,7 +141,27 @@ tts_engine_t* tts_engine_new(tts_engine_type_t type, zathura_error_t* error) {
             engine->functions = piper_functions;
             engine->name = g_strdup("Piper-TTS");
             /* Check for Poetry-installed Piper first, then system Piper */
-            engine->is_available = command_exists("poetry") || command_exists("piper");
+            bool piper_command_exists = command_exists("poetry") || command_exists("piper");
+            
+            /* Also check if any Piper models are available */
+            bool piper_models_available = false;
+            if (piper_command_exists) {
+                /* Check for default model locations */
+                char* home_model = g_strdup_printf("%s/.local/share/piper-voices/default.onnx", g_get_home_dir());
+                char* project_model = g_strdup_printf("%s/zathura-tts/voices/en_US-lessac-medium.onnx", g_get_current_dir());
+                
+                piper_models_available = g_file_test(home_model, G_FILE_TEST_EXISTS) || 
+                                       g_file_test(project_model, G_FILE_TEST_EXISTS);
+                
+                g_free(home_model);
+                g_free(project_model);
+            }
+            
+            engine->is_available = piper_command_exists && piper_models_available;
+            girara_info("🔧 DEBUG: Piper availability - command: %s, models: %s, available: %s",
+                       piper_command_exists ? "YES" : "NO",
+                       piper_models_available ? "YES" : "NO", 
+                       engine->is_available ? "YES" : "NO");
             break;
             
         case TTS_ENGINE_SPEECH_DISPATCHER:
@@ -559,6 +580,9 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     
     piper_engine_data_t* piper_data = (piper_engine_data_t*)engine->engine_data;
     
+    girara_info("🔧 DEBUG: piper_engine_speak - model_path: %s", 
+                piper_data->model_path ? piper_data->model_path : "(null)");
+    
     /* Stop any current speech */
     if (piper_data->current_process > 0) {
         kill(piper_data->current_process, SIGTERM);
@@ -574,12 +598,17 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     
     if (piper_data->model_path && g_file_test(piper_data->model_path, G_FILE_TEST_EXISTS)) {
         /* Use specific model if available */
+        girara_info("🔧 DEBUG: piper_engine_speak - using model: %s", piper_data->model_path);
         command = g_strdup_printf("cd '%s' && echo '%s' | poetry run piper --model '%s' --output-raw | aplay -r 22050 -f S16_LE -t raw -",
                                  project_dir, text, piper_data->model_path);
     } else {
-        /* Use default Piper command via Poetry */
-        command = g_strdup_printf("cd '%s' && echo '%s' | poetry run piper --output-raw | aplay -r 22050 -f S16_LE -t raw -", 
-                                 project_dir, text);
+        /* Model not found - this will fail since Piper requires a model */
+        girara_info("🚨 DEBUG: piper_engine_speak - no model found at: %s", 
+                    piper_data->model_path ? piper_data->model_path : "(null)");
+        girara_info("🚨 DEBUG: piper_engine_speak - Piper requires a model file, this will fail");
+        if (error) *error = ZATHURA_ERROR_UNKNOWN;
+        g_free(project_dir);
+        return false;
     }
     
     g_free(project_dir);

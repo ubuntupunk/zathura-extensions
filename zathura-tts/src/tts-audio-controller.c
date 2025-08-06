@@ -6,6 +6,7 @@
 #include "tts-engine.h"
 #include <girara/utils.h>
 #include <girara/datastructures.h>
+#include <girara/log.h>
 #include <string.h>
 
 /* Audio controller management functions */
@@ -188,7 +189,12 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
     g_mutex_unlock(&controller->state_mutex);
     
     /* Set state to playing */
-    return tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PLAYING);
+    if (!tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PLAYING)) {
+        return false;
+    }
+    
+    /* Start playing the first segment */
+    return tts_audio_controller_play_current_segment(controller);
 }
 
 void 

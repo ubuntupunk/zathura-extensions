@@ -12,6 +12,7 @@
 #include <girara/utils.h>
 #include <girara/commands.h>
 #include <girara/shortcuts.h>
+#include <girara/log.h>
 #include <zathura/types.h>
 #include <zathura/plugin-api.h>
 #include <zathura/document.h>
