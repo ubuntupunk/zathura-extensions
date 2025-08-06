@@ -2,8 +2,8 @@
  * Abstract interface for various TTS engines
  */
 
-#define _DEFAULT_SOURCE
 #include "tts-engine.h"
+#include "tts-engine-impl.h"
 #include <girara/log.h>
 #include <string.h>
 #include <stdlib.h>
@@ -69,7 +69,7 @@ static tts_engine_state_t espeak_engine_get_state(tts_engine_t* engine);
 static girara_list_t* espeak_engine_get_voices(tts_engine_t* engine, zathura_error_t* error);
 
 /* Engine function tables */
-static const tts_engine_functions_t piper_functions = {
+const tts_engine_functions_t piper_functions = {
     .init = piper_engine_init,
     .cleanup = piper_engine_cleanup,
     .speak = piper_engine_speak,
@@ -80,7 +80,7 @@ static const tts_engine_functions_t piper_functions = {
     .get_voices = piper_engine_get_voices
 };
 
-static const tts_engine_functions_t speech_dispatcher_functions = {
+const tts_engine_functions_t speech_dispatcher_functions = {
     .init = speech_dispatcher_engine_init,
     .cleanup = speech_dispatcher_engine_cleanup,
     .speak = speech_dispatcher_engine_speak,
@@ -91,7 +91,7 @@ static const tts_engine_functions_t speech_dispatcher_functions = {
     .get_voices = speech_dispatcher_engine_get_voices
 };
 
-static const tts_engine_functions_t espeak_functions = {
+const tts_engine_functions_t espeak_functions = {
     .init = espeak_engine_init,
     .cleanup = espeak_engine_cleanup,
     .speak = espeak_engine_speak,

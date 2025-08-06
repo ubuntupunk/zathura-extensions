@@ -91,6 +91,7 @@ void tts_audio_controller_set_state_change_callback(tts_audio_controller_t* cont
 /* Playback control functions */
 bool tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* text);
 bool tts_audio_controller_play_current_segment(tts_audio_controller_t* controller);
+bool tts_audio_controller_advance_to_next_segment(tts_audio_controller_t* controller);
 bool tts_audio_controller_navigate_to_segment(tts_audio_controller_t* controller, int direction);
 bool tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, int page);
 

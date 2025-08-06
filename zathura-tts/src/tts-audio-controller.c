@@ -2,12 +2,17 @@
  * Manages TTS playback state and audio session management
  */
 
+#define _DEFAULT_SOURCE
 #include "tts-audio-controller.h"
 #include "tts-engine.h"
 #include <girara/utils.h>
 #include <girara/datastructures.h>
 #include <girara/log.h>
 #include <string.h>
+#include <unistd.h>
+
+/* Forward declarations */
+static void tts_audio_controller_start_segment_monitoring(tts_audio_controller_t* controller);
 
 /* Audio controller management functions */
 
@@ -509,11 +514,107 @@ tts_audio_controller_play_current_segment(tts_audio_controller_t* controller)
     char* text_to_speak = g_strdup(segment->text);
     g_mutex_unlock(&controller->state_mutex);
     
+    girara_info("🔊 DEBUG: play_current_segment - playing segment %d of %zu", 
+                controller->current_segment + 1, girara_list_size(controller->text_segments));
+    
     /* Play the segment text */
     bool success = tts_audio_controller_play_text(controller, text_to_speak);
     g_free(text_to_speak);
     
+    /* If successful, start monitoring for completion to auto-advance */
+    if (success) {
+        tts_audio_controller_start_segment_monitoring(controller);
+    }
+    
     return success;
+}
+
+/* Background monitoring to auto-advance segments */
+static gpointer 
+tts_segment_monitor_thread(gpointer data) 
+{
+    tts_audio_controller_t* controller = (tts_audio_controller_t*)data;
+    
+    while (!controller->should_stop) {
+        g_mutex_lock(&controller->state_mutex);
+        
+        if (controller->state != TTS_AUDIO_STATE_PLAYING || controller->tts_engine == NULL) {
+            g_mutex_unlock(&controller->state_mutex);
+            break;
+        }
+        
+        /* Check if current segment has finished */
+        tts_engine_state_t engine_state = tts_engine_get_state(controller->tts_engine);
+        
+        if (engine_state == TTS_ENGINE_STATE_IDLE) {
+            g_mutex_unlock(&controller->state_mutex);
+            
+            girara_info("🔊 DEBUG: segment_monitor - segment finished, advancing to next");
+            
+            /* Current segment finished, advance to next */
+            if (!tts_audio_controller_advance_to_next_segment(controller)) {
+                /* No more segments, we're done */
+                break;
+            }
+        } else {
+            g_mutex_unlock(&controller->state_mutex);
+        }
+        
+        /* Check every 500ms */
+        usleep(500000);
+    }
+    
+    girara_info("🔊 DEBUG: segment_monitor - monitoring thread exiting");
+    return NULL;
+}
+
+static void 
+tts_audio_controller_start_segment_monitoring(tts_audio_controller_t* controller) 
+{
+    if (controller == NULL) {
+        return;
+    }
+    
+    /* Stop any existing monitoring thread */
+    if (controller->audio_thread != NULL) {
+        controller->should_stop = true;
+        g_thread_join(controller->audio_thread);
+        controller->audio_thread = NULL;
+    }
+    
+    /* Start new monitoring thread */
+    controller->should_stop = false;
+    controller->audio_thread = g_thread_new("tts-monitor", tts_segment_monitor_thread, controller);
+    
+    girara_info("🔊 DEBUG: start_segment_monitoring - monitoring thread started");
+}
+
+bool 
+tts_audio_controller_advance_to_next_segment(tts_audio_controller_t* controller) 
+{
+    if (controller == NULL || controller->text_segments == NULL) {
+        return false;
+    }
+    
+    g_mutex_lock(&controller->state_mutex);
+    
+    /* Check if there's a next segment */
+    if (controller->current_segment + 1 >= (int)girara_list_size(controller->text_segments)) {
+        girara_info("🔊 DEBUG: advance_to_next_segment - reached end of segments, stopping");
+        g_mutex_unlock(&controller->state_mutex);
+        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_STOPPED);
+        return false;
+    }
+    
+    /* Advance to next segment */
+    controller->current_segment++;
+    g_mutex_unlock(&controller->state_mutex);
+    
+    girara_info("🔊 DEBUG: advance_to_next_segment - advancing to segment %d", 
+                controller->current_segment + 1);
+    
+    /* Play the next segment */
+    return tts_audio_controller_play_current_segment(controller);
 }
 
 bool 

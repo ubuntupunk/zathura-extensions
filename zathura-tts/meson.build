@@ -52,6 +52,7 @@ inc = include_directories('.')
 plugin_sources = [
   'src/plugin.c',
   'src/tts-engine.c',
+  'src/tts-engine-piper.c',
   'src/tts-text-extractor.c',
   'src/tts-audio-controller.c',
   'src/tts-ui-controller.c',
