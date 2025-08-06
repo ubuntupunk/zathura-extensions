@@ -30,7 +30,7 @@ static const struct {
     const char* description;
 } default_shortcuts[] = {
     { GDK_CONTROL_MASK, GDK_KEY_t, NULL, TTS_SHORTCUT_TOGGLE, "Toggle TTS on/off" },
-    { GDK_CONTROL_MASK, GDK_KEY_space, NULL, TTS_SHORTCUT_PAUSE_RESUME, "Pause/resume TTS" },
+    { GDK_CONTROL_MASK, GDK_KEY_r, NULL, TTS_SHORTCUT_PAUSE_RESUME, "Pause/resume TTS" },
     { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_t, NULL, TTS_SHORTCUT_STOP, "Stop TTS" },
     { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_Right, NULL, TTS_SHORTCUT_NEXT_SEGMENT, "Next text segment" },
     { GDK_CONTROL_MASK | GDK_SHIFT_MASK, GDK_KEY_Left, NULL, TTS_SHORTCUT_PREV_SEGMENT, "Previous text segment" },
