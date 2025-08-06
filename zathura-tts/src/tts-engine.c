@@ -103,7 +103,7 @@ const tts_engine_functions_t espeak_functions = {
 };
 
 /* Helper function to check if a command exists */
-static bool command_exists(const char* command) {
+bool command_exists(const char* command) {
     if (command == NULL) {
         return false;
     }

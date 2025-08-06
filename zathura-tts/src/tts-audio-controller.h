@@ -40,6 +40,7 @@ struct tts_audio_controller_s {
     /* Threading */
     GThread* audio_thread;
     bool should_stop;
+    bool continuous_reading;
     
     /* Current text being processed */
     char* current_text;

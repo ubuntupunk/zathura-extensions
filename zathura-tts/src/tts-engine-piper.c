@@ -1,16 +1,9 @@
 /* Piper TTS Engine Implementation
- * Neural text-to-speech using Piper
+ * High-quality neural text-to-speech using Piper
  */
 
 #define _DEFAULT_SOURCE
-#include "tts-engine.h"
-#include <girara/log.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <signal.h>
+#include "tts-engine-impl.h"
 
 /* Piper-TTS engine data structure */
 typedef struct {
@@ -32,7 +25,7 @@ static bool piper_engine_set_config(tts_engine_t* engine, tts_engine_config_t* c
 static tts_engine_state_t piper_engine_get_state(tts_engine_t* engine);
 static girara_list_t* piper_engine_get_voices(tts_engine_t* engine, zathura_error_t* error);
 
-/* Engine function table */
+/* Function table */
 const tts_engine_functions_t piper_functions = {
     .init = piper_engine_init,
     .cleanup = piper_engine_cleanup,
@@ -154,7 +147,7 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
         /* Model not found - this will fail since Piper requires a model */
         girara_info("🚨 DEBUG: piper_engine_speak - no model found at: %s", 
                     piper_data->model_path ? piper_data->model_path : "(null)");
-        girara_info("🚨 DEBUG: piper_engine_speak - Piper requires a model file, this will fail");
+        girara_info("� DEBUG: ppiper_engine_speak - Piper requires a model file, this will fail");
         if (limited_text) g_free(limited_text);
         if (error) *error = ZATHURA_ERROR_UNKNOWN;
         g_free(project_dir);

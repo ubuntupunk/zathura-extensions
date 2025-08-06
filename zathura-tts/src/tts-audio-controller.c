@@ -41,6 +41,7 @@ tts_audio_controller_new(void)
     /* Initialize threading */
     controller->audio_thread = NULL;
     controller->should_stop = false;
+    controller->continuous_reading = false;
     
     /* Initialize text */
     controller->current_text = NULL;
@@ -199,7 +200,14 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
     }
     
     /* Start playing the first segment */
-    return tts_audio_controller_play_current_segment(controller);
+    if (!tts_audio_controller_play_current_segment(controller)) {
+        return false;
+    }
+    
+    /* Set up continuous reading mode */
+    controller->continuous_reading = true;
+    
+    return true;
 }
 
 void 
