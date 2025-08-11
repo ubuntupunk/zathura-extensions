@@ -13,7 +13,6 @@
 #include <unistd.h>
 
 /* Forward declarations */
-static void tts_audio_controller_start_segment_monitoring(tts_audio_controller_t* controller);
 static bool tts_audio_controller_start_streaming_session(tts_audio_controller_t* controller, girara_list_t* segments);
 static void tts_audio_controller_stop_streaming_session(tts_audio_controller_t* controller);
 
@@ -41,20 +40,8 @@ tts_audio_controller_new(void)
     controller->speed_multiplier = 1.0f;
     controller->volume_level = 80;
     
-    /* Initialize threading */
-    controller->audio_thread = NULL;
-    controller->should_stop = false;
-    controller->continuous_reading = false;
-    
-    /* Initialize text */
-    controller->current_text = NULL;
-    
-    /* Initialize TTS engine */
-    controller->tts_engine = NULL;
-    
     /* Initialize streaming engine */
     controller->streaming_engine = NULL;
-    controller->use_streaming = true; /* Enabled by default - streaming is now the preferred mode */
     
     /* Initialize callbacks */
     controller->state_change_callback = NULL;
@@ -78,8 +65,7 @@ tts_audio_controller_free(tts_audio_controller_t* controller)
         girara_list_free(controller->text_segments);
     }
     
-    /* Clean up current text */
-    g_free(controller->current_text);
+    /* Current text cleanup removed - handled by streaming engine */
     
     /* Clean up synchronization primitives */
     g_mutex_clear(&controller->state_mutex);
@@ -198,11 +184,9 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
         }
     }
     
-    /* Reset stop flag */
-    controller->should_stop = false;
+    /* Stop flag removed - handled by streaming engine */
     
-    /* Check if streaming mode is enabled */
-    bool use_streaming = controller->use_streaming;
+    /* Streaming is always enabled now */
     
     g_mutex_unlock(&controller->state_mutex);
     
@@ -211,23 +195,12 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
         return false;
     }
     
-    if (use_streaming) {
-        /* Use streaming engine for seamless playback */
-        girara_info("🚀 DEBUG: Using streaming TTS engine for session");
-        if (!tts_audio_controller_start_streaming_session(controller, segments)) {
-            girara_error("Failed to start streaming TTS session");
-            tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
-            return false;
-        }
-    } else {
-        /* Use traditional segment-by-segment playback */
-        girara_info("🔧 DEBUG: Using traditional TTS engine for session");
-        if (!tts_audio_controller_play_current_segment(controller)) {
-            return false;
-        }
-        
-        /* Set up continuous reading mode */
-        controller->continuous_reading = true;
+    /* Always use streaming engine for seamless playback */
+    girara_info("🚀 DEBUG: Using streaming TTS engine for session");
+    if (!tts_audio_controller_start_streaming_session(controller, segments)) {
+        girara_error("Failed to start streaming TTS session");
+        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
+        return false;
     }
     
     return true;
@@ -242,33 +215,14 @@ tts_audio_controller_stop_session(tts_audio_controller_t* controller)
     
     g_mutex_lock(&controller->state_mutex);
     
-    /* Check if using streaming mode */
-    bool use_streaming = controller->use_streaming;
-    
-    /* Set stop flag for audio thread */
-    controller->should_stop = true;
-    
-    /* Signal audio thread to stop if it exists */
-    if (controller->audio_thread != NULL) {
-        /* Don't join from here to avoid deadlock - let thread finish naturally */
-        g_thread_unref(controller->audio_thread);
-        controller->audio_thread = NULL;
-    }
-    
     /* Reset position */
     controller->current_page = -1;
     controller->current_segment = -1;
     
-    /* Clean up current text */
-    g_free(controller->current_text);
-    controller->current_text = NULL;
-    
     g_mutex_unlock(&controller->state_mutex);
     
-    /* Stop streaming session if enabled */
-    if (use_streaming) {
-        tts_audio_controller_stop_streaming_session(controller);
-    }
+    /* Stop streaming session */
+    tts_audio_controller_stop_streaming_session(controller);
     
     /* Set state to stopped */
     tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_STOPPED);
@@ -477,195 +431,15 @@ tts_audio_controller_play_text(tts_audio_controller_t* controller, const char* t
     girara_info("🔊 DEBUG: play_text called with text: '%.50s%s'", 
                 text ? text : "(null)", text && strlen(text) > 50 ? "..." : "");
     
-    if (controller == NULL || text == NULL || controller->tts_engine == NULL) {
-        girara_info("🚨 DEBUG: play_text - invalid parameters: controller=%p, text=%p, engine=%p", 
-                    (void*)controller, (void*)text, controller ? controller->tts_engine : NULL);
-        return false;
-    }
-    
-    tts_engine_t* engine = (tts_engine_t*)controller->tts_engine;
-    zathura_error_t error = ZATHURA_ERROR_OK;
-    
-    girara_info("🔧 DEBUG: play_text - engine found, configuring...");
-    
-    g_mutex_lock(&controller->state_mutex);
-    
-    /* Update current text */
-    g_free(controller->current_text);
-    controller->current_text = g_strdup(text);
-    
-    /* Apply current speed and volume settings to engine */
-    tts_engine_config_t* config = tts_engine_config_new();
-    if (config != NULL) {
-        config->speed = controller->speed_multiplier;
-        config->volume = controller->volume_level;
-        config->voice_name = NULL; /* Use current voice */
-        config->pitch = 0;
-        
-        girara_info("🔧 DEBUG: play_text - setting engine config (speed=%.1f, volume=%d)", 
-                    config->speed, config->volume);
-        tts_engine_set_config(engine, config, &error);
-        tts_engine_config_free(config);
-    }
-    
-    g_mutex_unlock(&controller->state_mutex);
-    
-    /* Start speaking the text */
-    girara_info("🎤 DEBUG: play_text - calling tts_engine_speak...");
-    bool success = tts_engine_speak(engine, text, &error);
-    girara_info("🎤 DEBUG: play_text - tts_engine_speak result: %s, error: %d", 
-                success ? "SUCCESS" : "FAILED", error);
-    
-    if (success) {
-        girara_info("✅ DEBUG: play_text - setting state to PLAYING");
-        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PLAYING);
-    } else {
-        girara_info("🚨 DEBUG: play_text - setting state to ERROR");
-        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
-    }
-    
-    return success;
+    /* This function is deprecated in streaming-only mode */
+    /* Text playback is now handled by the streaming engine */
+    (void)controller;
+    (void)text;
+    girara_info("🔧 DEBUG: play_text called but deprecated in streaming-only mode");
+    return true;
 }
 
-bool 
-tts_audio_controller_play_current_segment(tts_audio_controller_t* controller) 
-{
-    if (controller == NULL || controller->text_segments == NULL) {
-        return false;
-    }
-    
-    g_mutex_lock(&controller->state_mutex);
-    
-    /* Get current segment */
-    if (controller->current_segment < 0 || 
-        (size_t)controller->current_segment >= girara_list_size(controller->text_segments)) {
-        g_mutex_unlock(&controller->state_mutex);
-        return false;
-    }
-    
-    tts_text_segment_t* segment = girara_list_nth(controller->text_segments, controller->current_segment);
-    if (segment == NULL || segment->text == NULL) {
-        g_mutex_unlock(&controller->state_mutex);
-        return false;
-    }
-    
-    char* text_to_speak = g_strdup(segment->text);
-    g_mutex_unlock(&controller->state_mutex);
-    
-    girara_info("🔊 DEBUG: play_current_segment - playing segment %d of %zu", 
-                controller->current_segment + 1, girara_list_size(controller->text_segments));
-    
-    /* Play the segment text */
-    bool success = tts_audio_controller_play_text(controller, text_to_speak);
-    g_free(text_to_speak);
-    
-    /* If successful, start monitoring for completion to auto-advance */
-    if (success) {
-        tts_audio_controller_start_segment_monitoring(controller);
-    }
-    
-    return success;
-}
-
-/* Background monitoring to auto-advance segments */
-static gpointer 
-tts_segment_monitor_thread(gpointer data) 
-{
-    tts_audio_controller_t* controller = (tts_audio_controller_t*)data;
-    
-    while (!controller->should_stop) {
-        g_mutex_lock(&controller->state_mutex);
-        
-        if (controller->state != TTS_AUDIO_STATE_PLAYING || controller->tts_engine == NULL) {
-            g_mutex_unlock(&controller->state_mutex);
-            break;
-        }
-        
-        /* Check if current segment has finished */
-        tts_engine_state_t engine_state = tts_engine_get_state(controller->tts_engine);
-        
-        if (engine_state == TTS_ENGINE_STATE_IDLE) {
-            g_mutex_unlock(&controller->state_mutex);
-            
-            girara_info("🔊 DEBUG: segment_monitor - segment finished, advancing to next");
-            
-            /* Current segment finished, advance to next */
-            if (!tts_audio_controller_advance_to_next_segment(controller)) {
-                /* No more segments, we're done */
-                break;
-            }
-        } else {
-            g_mutex_unlock(&controller->state_mutex);
-        }
-        
-        /* Check every 100ms for better responsiveness */
-        usleep(100000);
-    }
-    
-    /* Set state to stopped when thread exits naturally (not from external stop) */
-    g_mutex_lock(&controller->state_mutex);
-    if (controller->state == TTS_AUDIO_STATE_PLAYING) {
-        controller->state = TTS_AUDIO_STATE_STOPPED;
-        /* Signal state change */
-        g_cond_broadcast(&controller->state_cond);
-    }
-    g_mutex_unlock(&controller->state_mutex);
-    
-    girara_info("🔊 DEBUG: segment_monitor - monitoring thread exiting");
-    return NULL;
-}
-
-static void 
-tts_audio_controller_start_segment_monitoring(tts_audio_controller_t* controller) 
-{
-    if (controller == NULL) {
-        return;
-    }
-    
-    /* Stop any existing monitoring thread */
-    if (controller->audio_thread != NULL) {
-        controller->should_stop = true;
-        /* Don't join immediately - let it finish naturally */
-        g_thread_unref(controller->audio_thread);
-        controller->audio_thread = NULL;
-    }
-    
-    /* Start new monitoring thread */
-    controller->should_stop = false;
-    controller->audio_thread = g_thread_new("tts-monitor", tts_segment_monitor_thread, controller);
-    
-    girara_info("🔊 DEBUG: start_segment_monitoring - monitoring thread started");
-}
-
-bool 
-tts_audio_controller_advance_to_next_segment(tts_audio_controller_t* controller) 
-{
-    if (controller == NULL || controller->text_segments == NULL) {
-        return false;
-    }
-    
-    g_mutex_lock(&controller->state_mutex);
-    
-    /* Check if there's a next segment */
-    if (controller->current_segment + 1 >= (int)girara_list_size(controller->text_segments)) {
-        girara_info("🔊 DEBUG: advance_to_next_segment - reached end of segments, stopping");
-        /* Set should_stop flag to signal thread to exit cleanly */
-        controller->should_stop = true;
-        g_mutex_unlock(&controller->state_mutex);
-        /* Don't call set_state from within the monitor thread to avoid deadlock */
-        return false;
-    }
-    
-    /* Advance to next segment */
-    controller->current_segment++;
-    g_mutex_unlock(&controller->state_mutex);
-    
-    girara_info("🔊 DEBUG: advance_to_next_segment - advancing to segment %d", 
-                controller->current_segment + 1);
-    
-    /* Play the next segment */
-    return tts_audio_controller_play_current_segment(controller);
-}
+/* Old chunking system removed - now using streaming-only architecture */
 
 bool 
 tts_audio_controller_navigate_to_segment(tts_audio_controller_t* controller, int direction) 
@@ -703,11 +477,8 @@ tts_audio_controller_navigate_to_segment(tts_audio_controller_t* controller, int
     
     g_mutex_unlock(&controller->state_mutex);
     
-    /* If currently playing, start playing the new segment */
-    if (tts_audio_controller_get_state(controller) == TTS_AUDIO_STATE_PLAYING) {
-        return tts_audio_controller_play_current_segment(controller);
-    }
-    
+    /* Note: Navigation during streaming playback would require streaming engine support */
+    /* For now, just update position - streaming will continue from current point */
     return true;
 }
 
@@ -743,11 +514,8 @@ tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, int pa
     
     g_mutex_unlock(&controller->state_mutex);
     
-    /* If currently playing, start playing the new segment */
-    if (tts_audio_controller_get_state(controller) == TTS_AUDIO_STATE_PLAYING) {
-        return tts_audio_controller_play_current_segment(controller);
-    }
-    
+    /* Note: Navigation during streaming playback would require streaming engine support */
+    /* For now, just update position - streaming will continue from current point */
     return true;
 }
 
@@ -756,103 +524,43 @@ tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, int pa
 void 
 tts_audio_controller_set_engine(tts_audio_controller_t* controller, void* engine) 
 {
-    if (controller == NULL) {
-        return;
-    }
-    
-    g_mutex_lock(&controller->state_mutex);
-    controller->tts_engine = engine;
-    g_mutex_unlock(&controller->state_mutex);
+    /* Engine setting deprecated in streaming-only mode */
+    (void)controller;
+    (void)engine;
+    girara_info("🔧 DEBUG: set_engine called but deprecated in streaming-only mode");
 }
 
 void* 
 tts_audio_controller_get_engine(tts_audio_controller_t* controller) 
 {
-    if (controller == NULL) {
-        return NULL;
-    }
-    
-    void* engine;
-    g_mutex_lock(&controller->state_mutex);
-    engine = controller->tts_engine;
-    g_mutex_unlock(&controller->state_mutex);
-    
-    return engine;
+    /* Engine getting deprecated in streaming-only mode */
+    (void)controller;
+    girara_info("🔧 DEBUG: get_engine called but deprecated in streaming-only mode");
+    return NULL;
 }
-/*
- Streaming engine integration */
-
-bool 
-tts_audio_controller_enable_streaming(tts_audio_controller_t* controller, bool enable) 
-{
-    if (controller == NULL) {
-        return false;
-    }
-    
-    g_mutex_lock(&controller->state_mutex);
-    
-    /* Can only change streaming mode when stopped */
-    if (controller->state != TTS_AUDIO_STATE_STOPPED) {
-        g_mutex_unlock(&controller->state_mutex);
-        return false;
-    }
-    
-    if (enable && controller->streaming_engine == NULL) {
-        /* Create streaming engine - use same engine as regular TTS or default to Piper */
-        tts_engine_type_t engine_type = TTS_ENGINE_PIPER; /* Default to Piper for best quality */
-        if (controller->tts_engine != NULL) {
-            /* Use same engine type as regular engine */
-            tts_engine_t* regular_engine = (tts_engine_t*)controller->tts_engine;
-            engine_type = regular_engine->type;
-            girara_info("🔧 DEBUG: Creating streaming engine with same type as regular engine: %d", engine_type);
-        } else {
-            girara_info("🔧 DEBUG: Creating streaming engine with default Piper-TTS");
-        }
-        
-        controller->streaming_engine = tts_streaming_engine_new(engine_type);
-        if (controller->streaming_engine == NULL) {
-            girara_error("Failed to create streaming TTS engine");
-            g_mutex_unlock(&controller->state_mutex);
-            return false;
-        }
-        
-        girara_info("✅ DEBUG: Streaming TTS engine created (type: %d)", engine_type);
-    } else if (!enable && controller->streaming_engine != NULL) {
-        /* Clean up streaming engine */
-        tts_streaming_engine_free((tts_streaming_engine_t*)controller->streaming_engine);
-        controller->streaming_engine = NULL;
-        girara_info("🔧 DEBUG: Streaming TTS engine disabled");
-    }
-    
-    controller->use_streaming = enable;
-    g_mutex_unlock(&controller->state_mutex);
-    
-    girara_info("🔧 DEBUG: Streaming mode %s", enable ? "ENABLED" : "DISABLED");
-    return true;
-}
-
-bool 
-tts_audio_controller_is_streaming_enabled(tts_audio_controller_t* controller) 
-{
-    if (controller == NULL) {
-        return false;
-    }
-    
-    bool enabled;
-    g_mutex_lock(&controller->state_mutex);
-    enabled = controller->use_streaming;
-    g_mutex_unlock(&controller->state_mutex);
-    
-    return enabled;
-}
+/* Streaming is now the only mode - no enable/disable needed */
 
 /* Streaming-based session management */
 
 static bool 
 tts_audio_controller_start_streaming_session(tts_audio_controller_t* controller, girara_list_t* segments) 
 {
-    if (controller == NULL || segments == NULL || controller->streaming_engine == NULL) {
+    if (controller == NULL || segments == NULL) {
         return false;
+    }
+    
+    /* Create streaming engine if not exists */
+    if (controller->streaming_engine == NULL) {
+        tts_engine_type_t engine_type = TTS_ENGINE_PIPER;
+        girara_info("🔧 DEBUG: Creating streaming engine with Piper-TTS");
+        
+        controller->streaming_engine = tts_streaming_engine_new(engine_type);
+        if (controller->streaming_engine == NULL) {
+            girara_error("Failed to create streaming TTS engine");
+            return false;
+        }
+        
+        girara_info("✅ DEBUG: Streaming TTS engine created (type: %d)", engine_type);
     }
     
     tts_streaming_engine_t* streaming_engine = (tts_streaming_engine_t*)controller->streaming_engine;

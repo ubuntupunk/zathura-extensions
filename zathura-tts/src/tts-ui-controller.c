@@ -23,7 +23,6 @@
 static tts_ui_controller_t* g_ui_controller = NULL;
 
 /* Forward declarations for command functions */
-bool cmd_tts_streaming(girara_session_t* session, girara_list_t* argument_list);
 
 /* Default TTS shortcuts configuration */
 static const struct {
@@ -979,7 +978,6 @@ tts_ui_controller_register_commands(tts_ui_controller_t* controller)
     all_registered &= girara_inputbar_command_add(controller->session, "tts-engine", NULL, cmd_tts_engine, NULL, "Set TTS engine");
     all_registered &= girara_inputbar_command_add(controller->session, "tts-config", NULL, cmd_tts_config, NULL, "Configure TTS settings");
     all_registered &= girara_inputbar_command_add(controller->session, "tts-status", NULL, cmd_tts_status, NULL, "Show TTS status");
-    all_registered &= girara_inputbar_command_add(controller->session, "tts-streaming", NULL, cmd_tts_streaming, NULL, "Toggle streaming mode on/off");
     
     if (all_registered) {
         tts_ui_controller_show_status(controller, "TTS: Commands registered", 2000);
@@ -1261,47 +1259,7 @@ cmd_tts_status(girara_session_t* session, girara_list_t* argument_list)
     return sc_tts_settings(session, NULL, NULL, 0);
 }
 
-bool 
-cmd_tts_streaming(girara_session_t* session, girara_list_t* argument_list) 
-{
-    tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
-    if (controller == NULL || controller->audio_controller == NULL) {
-        return false;
-    }
-    
-    bool enable_streaming = true;
-    
-    /* Check if argument provided */
-    if (argument_list != NULL && girara_list_size(argument_list) > 0) {
-        char* arg = (char*)girara_list_nth(argument_list, 0);
-        if (arg != NULL) {
-            if (g_strcmp0(arg, "on") == 0 || g_strcmp0(arg, "true") == 0 || g_strcmp0(arg, "1") == 0) {
-                enable_streaming = true;
-            } else if (g_strcmp0(arg, "off") == 0 || g_strcmp0(arg, "false") == 0 || g_strcmp0(arg, "0") == 0) {
-                enable_streaming = false;
-            } else if (g_strcmp0(arg, "toggle") == 0) {
-                enable_streaming = !tts_audio_controller_is_streaming_enabled(controller->audio_controller);
-            } else {
-                tts_ui_controller_show_status(controller, "TTS: Invalid streaming argument (use: on/off/toggle)", 3000);
-                return false;
-            }
-        }
-    } else {
-        /* No argument - toggle current state */
-        enable_streaming = !tts_audio_controller_is_streaming_enabled(controller->audio_controller);
-    }
-    
-    /* Enable/disable streaming */
-    if (tts_audio_controller_enable_streaming(controller->audio_controller, enable_streaming)) {
-        char* status_msg = g_strdup_printf("TTS: Streaming mode %s", enable_streaming ? "ENABLED" : "DISABLED");
-        tts_ui_controller_show_status(controller, status_msg, 3000);
-        g_free(status_msg);
-        return true;
-    } else {
-        tts_ui_controller_show_status(controller, "TTS: Failed to change streaming mode (stop TTS first)", 3000);
-        return false;
-    }
-}
+/* Streaming command removed - streaming is now the only mode */
 
 /* 
 User notification and status update functions */
