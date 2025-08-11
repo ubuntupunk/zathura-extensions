@@ -113,6 +113,7 @@ tts_plugin_init(zathura_t* zathura)
   
   /* Register TTS configuration options with Zathura's configuration system */
   girara_session_t* girara_session = zathura_get_session(zathura);
+  girara_debug("🔧 DEBUG: tts_plugin_init - girara_session: %p", (void*)girara_session);
   if (girara_session == NULL) {
     girara_error("TTS plugin initialization failed: could not get girara session");
     tts_plugin_cleanup();
@@ -195,16 +196,21 @@ tts_plugin_init(zathura_t* zathura)
   tts_audio_controller_set_volume(session->audio_controller, tts_config_get_default_volume(session->config));
 
   /* 4. Initialize UI controller */
+  girara_info("🔧 DEBUG: About to create UI controller...");
   session->ui_controller = tts_ui_controller_new(zathura, session->audio_controller);
   if (session->ui_controller == NULL) {
     girara_error("TTS plugin initialization failed: UI controller allocation error");
     tts_plugin_cleanup();
     return ZATHURA_ERROR_OUT_OF_MEMORY;
   }
+  girara_info("✅ DEBUG: UI controller created successfully");
 
   /* Register keyboard shortcuts and commands */
+  girara_info("🔧 DEBUG: About to register TTS shortcuts...");
   if (!tts_ui_controller_register_shortcuts(session->ui_controller)) {
     girara_warning("Some TTS keyboard shortcuts failed to register");
+  } else {
+    girara_info("✅ DEBUG: TTS shortcuts registration completed successfully");
   }
 
   if (!tts_ui_controller_register_commands(session->ui_controller)) {
@@ -458,6 +464,7 @@ tts_utility_plugin_init(zathura_t* zathura)
   
   /* Check if girara session is already available */
   girara_session_t* girara_session = zathura_get_session(zathura);
+  girara_debug("🔧 DEBUG: Utility plugin registration - girara_session: %p", (void*)girara_session);
   if (girara_session != NULL) {
     girara_info("TTS utility plugin: girara session is ready, proceeding with full initialization");
     

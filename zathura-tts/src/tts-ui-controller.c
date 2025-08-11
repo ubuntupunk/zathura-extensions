@@ -60,6 +60,8 @@ tts_ui_controller_new(zathura_t* zathura, tts_audio_controller_t* audio_controll
     controller->zathura = zathura;
     controller->session = zathura_get_session(zathura);
     
+    girara_info("🔧 DEBUG: UI controller created - session: %p", (void*)controller->session);
+    
     /* Initialize audio controller reference */
     controller->audio_controller = audio_controller;
     
@@ -121,9 +123,12 @@ tts_ui_controller_free(tts_ui_controller_t* controller)
 bool 
 tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller) 
 {
+    girara_info("🔧 DEBUG: tts_ui_controller_register_shortcuts called - controller: %p", (void*)controller);
     if (controller == NULL || controller->session == NULL) {
+        girara_info("❌ DEBUG: Registration failed - controller: %p, session: %p", (void*)controller, (void*)(controller ? controller->session : NULL));
         return false;
     }
+    girara_info("✅ DEBUG: Controller and session are valid, proceeding with registration...");
     
     if (controller->shortcuts_registered) {
         return true; /* Already registered */
@@ -138,7 +143,7 @@ tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller)
     size_t num_shortcuts = sizeof(default_shortcuts) / sizeof(default_shortcuts[0]);
     bool all_registered = true;
     
-    girara_debug("🔧 DEBUG: Registering %zu TTS shortcuts...", num_shortcuts);
+    girara_info("🔧 DEBUG: Registering %zu TTS shortcuts...", num_shortcuts);
     
     for (size_t i = 0; i < num_shortcuts; i++) {
         const tts_shortcut_t* shortcut = &default_shortcuts[i];
@@ -211,8 +216,10 @@ tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller)
         }
         
         if (registered && controller->registered_shortcuts != NULL) {
+            girara_debug("✅ DEBUG: Successfully registered shortcut: %s", shortcut->description);
             girara_list_append(controller->registered_shortcuts, info);
         } else {
+            girara_debug("❌ DEBUG: Failed to register shortcut: %s", shortcut->description);
             tts_shortcut_info_free(info);
             all_registered = false;
         }
@@ -456,7 +463,7 @@ sc_tts_pause_resume(girara_session_t* session, girara_argument_t* argument, gira
     (void)event;
     (void)t;
     
-    girara_debug("🎯 DEBUG: sc_tts_pause_resume called - Ctrl+Space pressed!");
+    girara_info("🎯 DEBUG: sc_tts_pause_resume called - Ctrl+R pressed!");
     
     tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
     if (controller == NULL || controller->audio_controller == NULL) {

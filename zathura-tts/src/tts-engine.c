@@ -180,7 +180,7 @@ bool tts_engine_speak(tts_engine_t* engine, const char* text, zathura_error_t* e
     girara_info("🎤 DEBUG: tts_engine_speak - calling engine-specific speak function...");
     bool result = engine->functions.speak(engine, text, error);
     girara_info("🎤 DEBUG: tts_engine_speak - engine speak result: %s, error: %d", 
-                result ? "SUCCESS" : "FAILED", error ? *error : -1);
+                result ? "SUCCESS" : "FAILED", error ? *error : (int)ZATHURA_ERROR_UNKNOWN);
     
     return result;
 }
