@@ -110,9 +110,25 @@ static bool espeak_engine_speak(tts_engine_t* engine, const char* text, zathura_
     
     /* Stop any current speech */
     if (espeak_data->current_process > 0) {
-        kill(espeak_data->current_process, SIGTERM);
-        waitpid(espeak_data->current_process, NULL, 0);
+        girara_info("🔧 DEBUG: espeak_engine_speak - stopping previous process PID: %d", espeak_data->current_process);
+        
+        /* First try SIGTERM */
+        if (kill(espeak_data->current_process, SIGTERM) == 0) {
+            /* Wait briefly for graceful termination */
+            usleep(200000); /* 200ms */
+            
+            /* Check if process is still running */
+            if (kill(espeak_data->current_process, 0) == 0) {
+                girara_info("🔧 DEBUG: espeak_engine_speak - process still running, using SIGKILL");
+                /* Force kill if still running */
+                kill(espeak_data->current_process, SIGKILL);
+            }
+            
+            waitpid(espeak_data->current_process, NULL, 0);
+        }
         espeak_data->current_process = 0;
+        espeak_data->is_speaking = false;
+        girara_info("✅ DEBUG: espeak_engine_speak - previous process stopped");
     }
     
     /* Build espeak-ng command */

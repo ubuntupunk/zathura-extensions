@@ -127,9 +127,25 @@ static bool piper_engine_speak(tts_engine_t* engine, const char* text, zathura_e
     
     /* Stop any current speech */
     if (piper_data->current_process > 0) {
-        kill(piper_data->current_process, SIGTERM);
-        waitpid(piper_data->current_process, NULL, 0);
+        girara_info("🔧 DEBUG: piper_engine_speak - stopping previous process PID: %d", piper_data->current_process);
+        
+        /* First try SIGTERM */
+        if (kill(piper_data->current_process, SIGTERM) == 0) {
+            /* Wait briefly for graceful termination */
+            usleep(200000); /* 200ms */
+            
+            /* Check if process is still running */
+            if (kill(piper_data->current_process, 0) == 0) {
+                girara_info("🔧 DEBUG: piper_engine_speak - process still running, using SIGKILL");
+                /* Force kill if still running */
+                kill(piper_data->current_process, SIGKILL);
+            }
+            
+            waitpid(piper_data->current_process, NULL, 0);
+        }
         piper_data->current_process = 0;
+        piper_data->is_speaking = false;
+        girara_info("✅ DEBUG: piper_engine_speak - previous process stopped");
     }
     
     /* Build Piper command - prefer Poetry-installed version */

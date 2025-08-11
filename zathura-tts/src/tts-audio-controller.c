@@ -162,10 +162,12 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
     
     g_mutex_lock(&controller->state_mutex);
     
-    /* Can only start session if stopped */
+    /* Stop any existing session first */
     if (controller->state != TTS_AUDIO_STATE_STOPPED) {
+        girara_info("🔧 DEBUG: start_session - stopping existing session first");
         g_mutex_unlock(&controller->state_mutex);
-        return false;
+        tts_audio_controller_stop_session(controller);
+        g_mutex_lock(&controller->state_mutex);
     }
     
     /* Clean up any existing segments */
@@ -222,11 +224,10 @@ tts_audio_controller_stop_session(tts_audio_controller_t* controller)
     /* Set stop flag for audio thread */
     controller->should_stop = true;
     
-    /* Wait for audio thread to finish if it exists */
+    /* Signal audio thread to stop if it exists */
     if (controller->audio_thread != NULL) {
-        g_mutex_unlock(&controller->state_mutex);
-        g_thread_join(controller->audio_thread);
-        g_mutex_lock(&controller->state_mutex);
+        /* Don't join from here to avoid deadlock - let thread finish naturally */
+        g_thread_unref(controller->audio_thread);
         controller->audio_thread = NULL;
     }
     
@@ -568,9 +569,18 @@ tts_segment_monitor_thread(gpointer data)
             g_mutex_unlock(&controller->state_mutex);
         }
         
-        /* Check every 500ms */
-        usleep(500000);
+        /* Check every 100ms for better responsiveness */
+        usleep(100000);
     }
+    
+    /* Set state to stopped when thread exits naturally (not from external stop) */
+    g_mutex_lock(&controller->state_mutex);
+    if (controller->state == TTS_AUDIO_STATE_PLAYING) {
+        controller->state = TTS_AUDIO_STATE_STOPPED;
+        /* Signal state change */
+        g_cond_broadcast(&controller->state_cond);
+    }
+    g_mutex_unlock(&controller->state_mutex);
     
     girara_info("🔊 DEBUG: segment_monitor - monitoring thread exiting");
     return NULL;
@@ -586,7 +596,8 @@ tts_audio_controller_start_segment_monitoring(tts_audio_controller_t* controller
     /* Stop any existing monitoring thread */
     if (controller->audio_thread != NULL) {
         controller->should_stop = true;
-        g_thread_join(controller->audio_thread);
+        /* Don't join immediately - let it finish naturally */
+        g_thread_unref(controller->audio_thread);
         controller->audio_thread = NULL;
     }
     
@@ -609,8 +620,10 @@ tts_audio_controller_advance_to_next_segment(tts_audio_controller_t* controller)
     /* Check if there's a next segment */
     if (controller->current_segment + 1 >= (int)girara_list_size(controller->text_segments)) {
         girara_info("🔊 DEBUG: advance_to_next_segment - reached end of segments, stopping");
+        /* Set should_stop flag to signal thread to exit cleanly */
+        controller->should_stop = true;
         g_mutex_unlock(&controller->state_mutex);
-        tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_STOPPED);
+        /* Don't call set_state from within the monitor thread to avoid deadlock */
         return false;
     }
     
