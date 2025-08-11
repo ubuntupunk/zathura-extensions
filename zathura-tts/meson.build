@@ -55,6 +55,7 @@ plugin_sources = [
   'src/tts-engine-piper.c',
   'src/tts-engine-speechd.c',
   'src/tts-engine-espeak.c',
+  'src/tts-streaming-engine.c',
   'src/tts-text-extractor.c',
   'src/tts-audio-controller.c',
   'src/tts-ui-controller.c',
