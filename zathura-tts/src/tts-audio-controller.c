@@ -577,21 +577,42 @@ tts_audio_controller_start_streaming_session(tts_audio_controller_t* controller,
     
     girara_info("🚀 DEBUG: Starting streaming TTS session with %zu segments", girara_list_size(segments));
     
+    /* Check audio system availability */
+    int audio_check = system("aplay -l > /dev/null 2>&1");
+    if (audio_check != 0) {
+        girara_info("🔊 INFO: No audio devices detected - TTS will run without sound output");
+        girara_info("🔊 INFO: Text processing and streaming pipeline will work normally");
+    }
+    
     /* Start the streaming engine */
     if (!tts_streaming_engine_start(streaming_engine)) {
         girara_error("Failed to start streaming TTS engine");
         return false;
     }
     
-    /* Queue all text segments */
+    /* Queue all text segments - create copies to avoid double-free */
     for (size_t i = 0; i < girara_list_size(segments); i++) {
-        tts_text_segment_t* segment = girara_list_nth(segments, i);
-        if (segment != NULL && segment->text != NULL) {
-            if (!tts_streaming_engine_queue_segment(streaming_engine, segment)) {
-                girara_warning("Failed to queue segment %zu", i);
+        tts_text_segment_t* original_segment = girara_list_nth(segments, i);
+        if (original_segment != NULL && original_segment->text != NULL) {
+            /* Create a copy of the segment for the streaming engine */
+            tts_text_segment_t* segment_copy = tts_text_segment_new(
+                original_segment->text, 
+                original_segment->bounds, 
+                original_segment->page_number, 
+                original_segment->segment_id, 
+                original_segment->type
+            );
+            
+            if (segment_copy != NULL) {
+                if (!tts_streaming_engine_queue_segment(streaming_engine, segment_copy)) {
+                    girara_warning("Failed to queue segment %zu", i);
+                    tts_text_segment_free(segment_copy); /* Free the copy if queuing failed */
+                } else {
+                    girara_debug("🔧 DEBUG: Queued segment %zu: '%.50s%s'", 
+                               i, segment_copy->text, strlen(segment_copy->text) > 50 ? "..." : "");
+                }
             } else {
-                girara_debug("🔧 DEBUG: Queued segment %zu: '%.50s%s'", 
-                           i, segment->text, strlen(segment->text) > 50 ? "..." : "");
+                girara_warning("Failed to create copy of segment %zu", i);
             }
         }
     }

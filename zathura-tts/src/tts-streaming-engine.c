@@ -174,7 +174,10 @@ tts_streaming_engine_stop(tts_streaming_engine_t* engine)
     
     g_mutex_unlock(&engine->state_mutex);
     
-    /* Wait for threads to finish */
+    /* Give threads time to exit gracefully */
+    usleep(50000); /* Wait 50ms */
+    
+    /* Clean up thread references */
     if (engine->feeder_thread != NULL) {
         g_thread_unref(engine->feeder_thread);
         engine->feeder_thread = NULL;
@@ -266,11 +269,11 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
         return false;
     }
     
-    /* Create pipes for communication */
-    int stdin_pipe[2], stdout_pipe[2];
+    /* Create pipe for text input only - audio goes directly to aplay */
+    int stdin_pipe[2];
     
-    if (pipe(stdin_pipe) == -1 || pipe(stdout_pipe) == -1) {
-        girara_error("Failed to create pipes for TTS process");
+    if (pipe(stdin_pipe) == -1) {
+        girara_error("Failed to create stdin pipe for TTS process");
         return false;
     }
     
@@ -278,7 +281,7 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
     char* command = NULL;
     switch (engine->engine_type) {
         case TTS_ENGINE_PIPER:
-            /* Use Piper with streaming input - try Poetry first, then system piper */
+            /* Use Piper with streaming input - include aplay in the pipeline */
             {
                 char* current_dir = g_get_current_dir();
                 char* project_dir = g_strdup_printf("%s/zathura-tts", current_dir);
@@ -286,11 +289,11 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
                 
                 /* Check if we're in a Poetry environment */
                 if (g_file_test(g_strdup_printf("%s/pyproject.toml", project_dir), G_FILE_TEST_EXISTS)) {
-                    /* Use Poetry-managed Piper */
-                    command = g_strdup_printf("sh -c \"cd '%s' && poetry run piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw\"", project_dir);
+                    /* Use Poetry-managed Piper with direct audio pipeline */
+                    command = g_strdup_printf("sh -c \"cd '%s' && poetry run piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw | aplay -r 22050 -f S16_LE -t raw -\"", project_dir);
                 } else {
-                    /* Try system-installed piper */
-                    command = g_strdup("piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw");
+                    /* Try system-installed piper with direct audio pipeline */
+                    command = g_strdup("sh -c \"piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw | aplay -r 22050 -f S16_LE -t raw -\"");
                 }
                 g_free(project_dir);
             }
@@ -307,7 +310,6 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
         default:
             girara_error("Unsupported streaming engine type: %d", engine->engine_type);
             close(stdin_pipe[0]); close(stdin_pipe[1]);
-            close(stdout_pipe[0]); close(stdout_pipe[1]);
             return false;
     }
     
@@ -318,13 +320,11 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
     if (pid == 0) {
         /* Child process */
         
-        /* Set up pipes */
+        /* Set up stdin pipe only - stdout goes to aplay directly */
         dup2(stdin_pipe[0], STDIN_FILENO);
-        dup2(stdout_pipe[1], STDOUT_FILENO);
         
         /* Close unused pipe ends */
         close(stdin_pipe[1]);
-        close(stdout_pipe[0]);
         
         /* Execute command */
         execl("/bin/sh", "sh", "-c", command, NULL);
@@ -332,22 +332,20 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
     } else if (pid > 0) {
         /* Parent process */
         
-        /* Close unused pipe ends */
+        /* Close unused pipe end */
         close(stdin_pipe[0]);
-        close(stdout_pipe[1]);
         
         /* Store process info */
         engine->process_pid = pid;
         engine->stdin_fd = stdin_pipe[1];
-        engine->stdout_fd = stdout_pipe[0];
+        engine->stdout_fd = -1; /* No stdout pipe - audio goes directly to aplay */
         
-        /* Create GIO channels for non-blocking I/O */
+        /* Create GIO channel for text input only */
         engine->text_channel = g_io_channel_unix_new(engine->stdin_fd);
-        engine->audio_channel = g_io_channel_unix_new(engine->stdout_fd);
+        engine->audio_channel = NULL; /* No audio channel needed */
         
-        /* Set channels to non-blocking */
+        /* Set channel to non-blocking */
         g_io_channel_set_flags(engine->text_channel, G_IO_FLAG_NONBLOCK, NULL);
-        g_io_channel_set_flags(engine->audio_channel, G_IO_FLAG_NONBLOCK, NULL);
         
         g_free(command);
         return true;
@@ -355,7 +353,6 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
         /* Fork failed */
         girara_error("Failed to fork TTS process");
         close(stdin_pipe[0]); close(stdin_pipe[1]);
-        close(stdout_pipe[0]); close(stdout_pipe[1]);
         g_free(command);
         return false;
     }
@@ -368,48 +365,56 @@ tts_streaming_engine_cleanup_process(tts_streaming_engine_t* engine)
         return;
     }
     
-    /* Close channels */
+    /* Close text channel */
     if (engine->text_channel != NULL) {
         g_io_channel_shutdown(engine->text_channel, TRUE, NULL);
         g_io_channel_unref(engine->text_channel);
         engine->text_channel = NULL;
     }
     
-    if (engine->audio_channel != NULL) {
-        g_io_channel_shutdown(engine->audio_channel, TRUE, NULL);
-        g_io_channel_unref(engine->audio_channel);
-        engine->audio_channel = NULL;
-    }
-    
-    /* Close file descriptors */
+    /* Close stdin file descriptor */
     if (engine->stdin_fd >= 0) {
         close(engine->stdin_fd);
         engine->stdin_fd = -1;
     }
     
-    if (engine->stdout_fd >= 0) {
-        close(engine->stdout_fd);
-        engine->stdout_fd = -1;
-    }
+    /* No audio channel or stdout_fd in this simplified setup */
     
     /* Terminate process */
     if (engine->process_pid > 0) {
         girara_info("🔧 DEBUG: Terminating TTS process PID: %d", engine->process_pid);
         
-        /* Try SIGTERM first */
-        if (kill(engine->process_pid, SIGTERM) == 0) {
-            usleep(200000); /* Wait 200ms */
-            
-            /* Check if still running */
-            if (kill(engine->process_pid, 0) == 0) {
-                girara_info("🔧 DEBUG: Process still running, using SIGKILL");
-                kill(engine->process_pid, SIGKILL);
+        /* Close stdin first to signal end of input */
+        if (engine->stdin_fd >= 0) {
+            close(engine->stdin_fd);
+            engine->stdin_fd = -1;
+        }
+        
+        /* Give process a moment to finish naturally */
+        usleep(100000); /* Wait 100ms */
+        
+        /* Check if process is still running */
+        int status;
+        pid_t result = waitpid(engine->process_pid, &status, WNOHANG);
+        
+        if (result == 0) {
+            /* Process still running, try SIGTERM */
+            girara_info("🔧 DEBUG: Process still running, sending SIGTERM");
+            if (kill(engine->process_pid, SIGTERM) == 0) {
+                usleep(200000); /* Wait 200ms */
+                
+                /* Check again */
+                result = waitpid(engine->process_pid, &status, WNOHANG);
+                if (result == 0) {
+                    girara_info("🔧 DEBUG: Process still running, using SIGKILL");
+                    kill(engine->process_pid, SIGKILL);
+                    waitpid(engine->process_pid, &status, 0);
+                }
             }
-            
-            waitpid(engine->process_pid, NULL, 0);
         }
         
         engine->process_pid = 0;
+        girara_info("✅ DEBUG: TTS process terminated successfully");
     }
 }
 
@@ -488,43 +493,26 @@ tts_audio_player_thread(gpointer data)
     
     girara_info("🔧 DEBUG: Audio player thread started");
     
-    /* For now, we'll use a simple approach - pipe audio to aplay */
-    /* In a more sophisticated implementation, we'd buffer and manage audio directly */
+    /* Since we're using Piper with aplay directly in the command pipeline,
+     * this thread just needs to monitor the process and handle cleanup */
     
-    if (engine->audio_channel != NULL) {
-        /* Start aplay process to handle audio output */
-        GPid aplay_pid;
-        int aplay_stdin;
+    while (!engine->should_stop_audio && engine->process_pid > 0) {
+        /* Check if the TTS process is still running */
+        int status;
+        pid_t result = waitpid(engine->process_pid, &status, WNOHANG);
         
-        char* aplay_cmd[] = {"aplay", "-r", "22050", "-f", "S16_LE", "-t", "raw", "-", NULL};
-        
-        if (g_spawn_async_with_pipes(NULL, aplay_cmd, NULL,
-                                   G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
-                                   NULL, NULL, &aplay_pid, &aplay_stdin, NULL, NULL, NULL)) {
-            
-            /* Pipe audio from TTS to aplay */
-            char buffer[4096];
-            gsize bytes_read;
-            
-            while (!engine->should_stop_audio) {
-                GIOStatus status = g_io_channel_read_chars(engine->audio_channel, 
-                                                         buffer, sizeof(buffer), 
-                                                         &bytes_read, NULL);
-                
-                if (status == G_IO_STATUS_NORMAL && bytes_read > 0) {
-                    write(aplay_stdin, buffer, bytes_read);
-                } else if (status == G_IO_STATUS_EOF) {
-                    break;
-                } else if (status == G_IO_STATUS_AGAIN) {
-                    usleep(10000); /* Wait 10ms */
-                }
-            }
-            
-            /* Clean up aplay */
-            close(aplay_stdin);
-            kill(aplay_pid, SIGTERM);
-            waitpid(aplay_pid, NULL, 0);
+        if (result > 0) {
+            /* Process finished */
+            girara_info("🔊 DEBUG: TTS process finished naturally");
+            break;
+        } else if (result < 0) {
+            /* Error occurred */
+            girara_warning("🚨 DEBUG: Error monitoring TTS process");
+            break;
         }
+        
+        /* Process still running, wait a bit */
+        usleep(100000); /* Wait 100ms */
     }
     
     girara_info("🔧 DEBUG: Audio player thread exiting");
