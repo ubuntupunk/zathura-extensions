@@ -48,6 +48,10 @@ struct tts_audio_controller_s {
     /* TTS Engine integration */
     void* tts_engine;
     
+    /* Streaming TTS Engine (optional) */
+    void* streaming_engine;
+    bool use_streaming;
+    
     /* Callbacks for state changes */
     void (*state_change_callback)(tts_audio_state_t old_state, tts_audio_state_t new_state, void* user_data);
     void* callback_user_data;
@@ -99,6 +103,10 @@ bool tts_audio_controller_navigate_to_page(tts_audio_controller_t* controller, i
 /* Engine integration */
 void tts_audio_controller_set_engine(tts_audio_controller_t* controller, void* engine);
 void* tts_audio_controller_get_engine(tts_audio_controller_t* controller);
+
+/* Streaming engine integration */
+bool tts_audio_controller_enable_streaming(tts_audio_controller_t* controller, bool enable);
+bool tts_audio_controller_is_streaming_enabled(tts_audio_controller_t* controller);
 
 /* Text segment helper functions are defined in tts-text-extractor.h */
 

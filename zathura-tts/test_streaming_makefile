@@ -1,0 +1,26 @@
+#!/bin/bash
+# Simple build script for streaming TTS test
+
+echo "🔧 Building streaming TTS test..."
+
+# Get the required flags
+GLIB_FLAGS=$(pkg-config --cflags --libs glib-2.0)
+GIRARA_FLAGS=$(pkg-config --cflags --libs girara-gtk3)
+
+# Compile the test
+gcc -o test_streaming test_streaming.c \
+    src/tts-streaming-engine.c \
+    src/tts-text-extractor.c \
+    src/tts-engine.c \
+    $GLIB_FLAGS $GIRARA_FLAGS \
+    -I. -I/usr/local/include/zathura \
+    -DZATHURA_API_VERSION=6 -DZATHURA_ABI_VERSION=7
+
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
+    echo "🧪 Running streaming TTS test..."
+    ./test_streaming
+else
+    echo "❌ Build failed!"
+    exit 1
+fi

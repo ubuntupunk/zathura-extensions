@@ -5,6 +5,7 @@
 #define _DEFAULT_SOURCE
 #include "tts-audio-controller.h"
 #include "tts-engine.h"
+#include "tts-streaming-engine.h"
 #include <girara/utils.h>
 #include <girara/datastructures.h>
 #include <girara/log.h>
@@ -13,6 +14,8 @@
 
 /* Forward declarations */
 static void tts_audio_controller_start_segment_monitoring(tts_audio_controller_t* controller);
+static bool tts_audio_controller_start_streaming_session(tts_audio_controller_t* controller, girara_list_t* segments);
+static void tts_audio_controller_stop_streaming_session(tts_audio_controller_t* controller);
 
 /* Audio controller management functions */
 
@@ -48,6 +51,10 @@ tts_audio_controller_new(void)
     
     /* Initialize TTS engine */
     controller->tts_engine = NULL;
+    
+    /* Initialize streaming engine */
+    controller->streaming_engine = NULL;
+    controller->use_streaming = false; /* Disabled by default for compatibility */
     
     /* Initialize callbacks */
     controller->state_change_callback = NULL;
@@ -194,6 +201,9 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
     /* Reset stop flag */
     controller->should_stop = false;
     
+    /* Check if streaming mode is enabled */
+    bool use_streaming = controller->use_streaming;
+    
     g_mutex_unlock(&controller->state_mutex);
     
     /* Set state to playing */
@@ -201,13 +211,24 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
         return false;
     }
     
-    /* Start playing the first segment */
-    if (!tts_audio_controller_play_current_segment(controller)) {
-        return false;
+    if (use_streaming) {
+        /* Use streaming engine for seamless playback */
+        girara_info("🚀 DEBUG: Using streaming TTS engine for session");
+        if (!tts_audio_controller_start_streaming_session(controller, segments)) {
+            girara_error("Failed to start streaming TTS session");
+            tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
+            return false;
+        }
+    } else {
+        /* Use traditional segment-by-segment playback */
+        girara_info("🔧 DEBUG: Using traditional TTS engine for session");
+        if (!tts_audio_controller_play_current_segment(controller)) {
+            return false;
+        }
+        
+        /* Set up continuous reading mode */
+        controller->continuous_reading = true;
     }
-    
-    /* Set up continuous reading mode */
-    controller->continuous_reading = true;
     
     return true;
 }
@@ -220,6 +241,9 @@ tts_audio_controller_stop_session(tts_audio_controller_t* controller)
     }
     
     g_mutex_lock(&controller->state_mutex);
+    
+    /* Check if using streaming mode */
+    bool use_streaming = controller->use_streaming;
     
     /* Set stop flag for audio thread */
     controller->should_stop = true;
@@ -240,6 +264,11 @@ tts_audio_controller_stop_session(tts_audio_controller_t* controller)
     controller->current_text = NULL;
     
     g_mutex_unlock(&controller->state_mutex);
+    
+    /* Stop streaming session if enabled */
+    if (use_streaming) {
+        tts_audio_controller_stop_streaming_session(controller);
+    }
     
     /* Set state to stopped */
     tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_STOPPED);
@@ -749,4 +778,113 @@ tts_audio_controller_get_engine(tts_audio_controller_t* controller)
     g_mutex_unlock(&controller->state_mutex);
     
     return engine;
+}
+/*
+ Streaming engine integration */
+
+bool 
+tts_audio_controller_enable_streaming(tts_audio_controller_t* controller, bool enable) 
+{
+    if (controller == NULL) {
+        return false;
+    }
+    
+    g_mutex_lock(&controller->state_mutex);
+    
+    /* Can only change streaming mode when stopped */
+    if (controller->state != TTS_AUDIO_STATE_STOPPED) {
+        g_mutex_unlock(&controller->state_mutex);
+        return false;
+    }
+    
+    if (enable && controller->streaming_engine == NULL) {
+        /* Create streaming engine - force espeak for now since it's available */
+        tts_engine_type_t engine_type = TTS_ENGINE_ESPEAK; /* Force espeak for streaming testing */
+        girara_info("🔧 DEBUG: Creating streaming engine with espeak-ng (forced for testing)");
+        
+        controller->streaming_engine = tts_streaming_engine_new(engine_type);
+        if (controller->streaming_engine == NULL) {
+            girara_error("Failed to create streaming TTS engine");
+            g_mutex_unlock(&controller->state_mutex);
+            return false;
+        }
+        
+        girara_info("✅ DEBUG: Streaming TTS engine created (type: %d)", engine_type);
+    } else if (!enable && controller->streaming_engine != NULL) {
+        /* Clean up streaming engine */
+        tts_streaming_engine_free((tts_streaming_engine_t*)controller->streaming_engine);
+        controller->streaming_engine = NULL;
+        girara_info("🔧 DEBUG: Streaming TTS engine disabled");
+    }
+    
+    controller->use_streaming = enable;
+    g_mutex_unlock(&controller->state_mutex);
+    
+    girara_info("🔧 DEBUG: Streaming mode %s", enable ? "ENABLED" : "DISABLED");
+    return true;
+}
+
+bool 
+tts_audio_controller_is_streaming_enabled(tts_audio_controller_t* controller) 
+{
+    if (controller == NULL) {
+        return false;
+    }
+    
+    bool enabled;
+    g_mutex_lock(&controller->state_mutex);
+    enabled = controller->use_streaming;
+    g_mutex_unlock(&controller->state_mutex);
+    
+    return enabled;
+}
+
+/* Streaming-based session management */
+
+static bool 
+tts_audio_controller_start_streaming_session(tts_audio_controller_t* controller, girara_list_t* segments) 
+{
+    if (controller == NULL || segments == NULL || controller->streaming_engine == NULL) {
+        return false;
+    }
+    
+    tts_streaming_engine_t* streaming_engine = (tts_streaming_engine_t*)controller->streaming_engine;
+    
+    girara_info("🚀 DEBUG: Starting streaming TTS session with %zu segments", girara_list_size(segments));
+    
+    /* Start the streaming engine */
+    if (!tts_streaming_engine_start(streaming_engine)) {
+        girara_error("Failed to start streaming TTS engine");
+        return false;
+    }
+    
+    /* Queue all text segments */
+    for (size_t i = 0; i < girara_list_size(segments); i++) {
+        tts_text_segment_t* segment = girara_list_nth(segments, i);
+        if (segment != NULL && segment->text != NULL) {
+            if (!tts_streaming_engine_queue_segment(streaming_engine, segment)) {
+                girara_warning("Failed to queue segment %zu", i);
+            } else {
+                girara_debug("🔧 DEBUG: Queued segment %zu: '%.50s%s'", 
+                           i, segment->text, strlen(segment->text) > 50 ? "..." : "");
+            }
+        }
+    }
+    
+    girara_info("✅ DEBUG: Streaming session started with %zu segments queued", girara_list_size(segments));
+    return true;
+}
+
+static void 
+tts_audio_controller_stop_streaming_session(tts_audio_controller_t* controller) 
+{
+    if (controller == NULL || controller->streaming_engine == NULL) {
+        return;
+    }
+    
+    tts_streaming_engine_t* streaming_engine = (tts_streaming_engine_t*)controller->streaming_engine;
+    
+    girara_info("🔧 DEBUG: Stopping streaming TTS session");
+    tts_streaming_engine_stop(streaming_engine);
+    girara_info("✅ DEBUG: Streaming session stopped");
 }
