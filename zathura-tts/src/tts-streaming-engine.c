@@ -211,11 +211,12 @@ tts_streaming_engine_queue_segment(tts_streaming_engine_t* engine, tts_text_segm
     
     g_mutex_lock(&engine->queue_mutex);
     g_queue_push_tail(engine->text_queue, segment);
+    size_t queue_size = g_queue_get_length(engine->text_queue);
     g_cond_signal(&engine->queue_cond);
     g_mutex_unlock(&engine->queue_mutex);
     
-    girara_debug("🔧 DEBUG: Queued text segment %d: '%.50s%s'", 
-                 segment->segment_id, segment->text, strlen(segment->text) > 50 ? "..." : "");
+    girara_info("🔧 DEBUG: Queued text segment %d (queue size: %zu): '%.50s%s'", 
+                 segment->segment_id, queue_size, segment->text, strlen(segment->text) > 50 ? "..." : "");
     
     return true;
 }
@@ -247,7 +248,9 @@ tts_streaming_engine_clear_queue(tts_streaming_engine_t* engine)
     g_mutex_lock(&engine->queue_mutex);
     while (!g_queue_is_empty(engine->text_queue)) {
         tts_text_segment_t* segment = g_queue_pop_head(engine->text_queue);
-        tts_text_segment_free(segment);
+        if (segment != NULL) {
+            tts_text_segment_free(segment);
+        }
     }
     g_mutex_unlock(&engine->queue_mutex);
     
@@ -434,11 +437,14 @@ tts_text_feeder_thread(gpointer data)
         
         /* Get next segment */
         tts_text_segment_t* segment = g_queue_pop_head(engine->text_queue);
+        size_t remaining_queue_size = g_queue_get_length(engine->text_queue);
         g_mutex_unlock(&engine->queue_mutex);
         
-        if (segment != NULL) {
+        girara_info("🔧 DEBUG: Text feeder got segment: %p (remaining in queue: %zu)", (void*)segment, remaining_queue_size);
+        
+        if (segment != NULL && segment->text != NULL) {
             /* Send text to TTS process */
-            if (engine->text_channel != NULL) {
+            if (engine->text_channel != NULL && strlen(segment->text) > 0) {
                 gsize bytes_written;
                 GError* error = NULL;
                 
@@ -453,15 +459,21 @@ tts_text_feeder_thread(gpointer data)
                     g_io_channel_write_chars(engine->text_channel, "\n", 1, &bytes_written, NULL);
                     g_io_channel_flush(engine->text_channel, NULL);
                     
-                    girara_debug("🔧 DEBUG: Fed text segment %d to TTS process", segment->segment_id);
+                    girara_info("✅ DEBUG: Fed text segment %d to TTS process: '%.30s%s'", 
+                               segment->segment_id, segment->text, strlen(segment->text) > 30 ? "..." : "");
                 } else {
-                    girara_warning("Failed to write text to TTS process: %s", 
+                    girara_error("🚨 DEBUG: Failed to write text to TTS process: %s", 
                                  error ? error->message : "unknown error");
                     if (error) g_error_free(error);
                 }
+            } else if (strlen(segment->text) == 0) {
+                girara_warning("🔧 DEBUG: Skipping empty text segment %d", segment->segment_id);
             }
             
+            /* Free the segment safely */
             tts_text_segment_free(segment);
+        } else {
+            girara_warning("🚨 DEBUG: Got NULL or invalid segment from queue");
         }
     }
     

@@ -197,7 +197,12 @@ tts_audio_controller_start_session(tts_audio_controller_t* controller, girara_li
     
     /* Always use streaming engine for seamless playback */
     girara_info("🚀 DEBUG: Using streaming TTS engine for session");
-    if (!tts_audio_controller_start_streaming_session(controller, segments)) {
+    girara_info("🔧 DEBUG: About to call start_streaming_session with %zu segments", girara_list_size(segments));
+    
+    bool streaming_result = tts_audio_controller_start_streaming_session(controller, segments);
+    girara_info("🔧 DEBUG: start_streaming_session returned: %s", streaming_result ? "SUCCESS" : "FAILED");
+    
+    if (!streaming_result) {
         girara_error("Failed to start streaming TTS session");
         tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_ERROR);
         return false;
@@ -545,9 +550,14 @@ tts_audio_controller_get_engine(tts_audio_controller_t* controller)
 static bool 
 tts_audio_controller_start_streaming_session(tts_audio_controller_t* controller, girara_list_t* segments) 
 {
+    girara_info("🔧 DEBUG: start_streaming_session called with controller=%p, segments=%p", (void*)controller, (void*)segments);
+    
     if (controller == NULL || segments == NULL) {
+        girara_error("🚨 DEBUG: start_streaming_session - invalid parameters: controller=%p, segments=%p", (void*)controller, (void*)segments);
         return false;
     }
+    
+    girara_info("🔧 DEBUG: start_streaming_session - parameters valid, segments count: %zu", girara_list_size(segments));
     
     /* Create streaming engine if not exists */
     if (controller->streaming_engine == NULL) {
