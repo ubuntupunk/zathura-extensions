@@ -54,7 +54,7 @@ tts_audio_controller_new(void)
     
     /* Initialize streaming engine */
     controller->streaming_engine = NULL;
-    controller->use_streaming = false; /* Disabled by default for compatibility */
+    controller->use_streaming = true; /* Enabled by default - streaming is now the preferred mode */
     
     /* Initialize callbacks */
     controller->state_change_callback = NULL;
@@ -798,9 +798,16 @@ tts_audio_controller_enable_streaming(tts_audio_controller_t* controller, bool e
     }
     
     if (enable && controller->streaming_engine == NULL) {
-        /* Create streaming engine - force espeak for now since it's available */
-        tts_engine_type_t engine_type = TTS_ENGINE_ESPEAK; /* Force espeak for streaming testing */
-        girara_info("🔧 DEBUG: Creating streaming engine with espeak-ng (forced for testing)");
+        /* Create streaming engine - use same engine as regular TTS or default to Piper */
+        tts_engine_type_t engine_type = TTS_ENGINE_PIPER; /* Default to Piper for best quality */
+        if (controller->tts_engine != NULL) {
+            /* Use same engine type as regular engine */
+            tts_engine_t* regular_engine = (tts_engine_t*)controller->tts_engine;
+            engine_type = regular_engine->type;
+            girara_info("🔧 DEBUG: Creating streaming engine with same type as regular engine: %d", engine_type);
+        } else {
+            girara_info("🔧 DEBUG: Creating streaming engine with default Piper-TTS");
+        }
         
         controller->streaming_engine = tts_streaming_engine_new(engine_type);
         if (controller->streaming_engine == NULL) {

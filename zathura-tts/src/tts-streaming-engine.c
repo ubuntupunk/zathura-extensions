@@ -275,8 +275,15 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
     char* command = NULL;
     switch (engine->engine_type) {
         case TTS_ENGINE_PIPER:
-            /* Use piper with streaming input */
-            command = g_strdup_printf("piper --model /home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx --output-raw");
+            /* Use Poetry-managed piper with streaming input */
+            {
+                char* current_dir = g_get_current_dir();
+                char* project_dir = g_strdup_printf("%s/zathura-tts", current_dir);
+                g_free(current_dir);
+                
+                command = g_strdup_printf("sh -c \"cd '%s' && poetry run piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw\"", project_dir);
+                g_free(project_dir);
+            }
             break;
         case TTS_ENGINE_ESPEAK:
             /* Use espeak-ng with streaming input */

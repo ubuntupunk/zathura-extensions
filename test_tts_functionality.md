@@ -107,4 +107,18 @@ The streaming architecture successfully addresses the original issues:
 - ❌ **Multiple overlapping readers** → ✅ **Single persistent process**
 - ❌ **Audio gaps and choppiness** → ✅ **Smooth audio pipeline**
 
-**Status: READY FOR PRODUCTION USE**
+### 🚀 **LATEST UPDATE: Streaming Mode Now Default**
+
+#### ✅ **Production Deployment Changes:**
+- **Streaming Mode Default**: Now enabled by default for all users
+- **Piper-TTS Streaming**: Restored high-quality neural voice streaming
+- **Poetry Integration**: Fixed Poetry-managed Piper command for streaming
+- **Engine Consistency**: Streaming uses same engine as regular TTS
+
+#### ✅ **User Experience Improvements:**
+- **No Setup Required**: Streaming works out-of-the-box
+- **Best Quality Default**: Piper-TTS neural voices by default
+- **Seamless Experience**: Continuous audio without configuration
+- **Backward Compatible**: `:tts-streaming off` for traditional mode
+
+**Status: PRODUCTION READY WITH STREAMING AS DEFAULT**
