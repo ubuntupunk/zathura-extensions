@@ -1,6 +1,6 @@
 [submodule "zathura"]
 	path = zathura
-	url = git@github.com-zathura:ubuntupunk/zathura.git
+	url = git@github.com:ubuntupunk/zathura.git
 [submodule "zathura-pdf-poppler"]
 	path = zathura-pdf-poppler
 	url = https://github.com/pwmt/zathura-pdf-poppler.git
