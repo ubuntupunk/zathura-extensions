@@ -1,0 +1,395 @@
+From 9ebd3a0149306665f4db151f4688ba3431dd9a3f Mon Sep 17 00:00:00 2001
+From: David Robert Lewis <ubuntupunk@gmail.com>
+Date: Tue, 5 Aug 2025 05:25:48 -0400
+Subject: [PATCH] Add utility plugin support and TTS API functions
+
+- Add utility plugin architecture to plugin system
+- Implement zathura_get_session() and zathura_get_document() API functions
+- Add ZATHURA_PLUGIN_API exports for plugin compatibility
+- Update plugin loading to support both document and utility plugins
+- Install zathura.h header for plugin development
+
+This enables the TTS plugin to access Zathura's session and document APIs
+at runtime, resolving the deferred initialization issues.
+---
+ meson.build                   |   3 +-
+ zathura/plugin-api.h          |  38 +++++++++++
+ zathura/plugin.c              | 115 +++++++++++++++++++++++++++++++++-
+ zathura/plugin.h              |   8 +++
+ zathura/utils.c               |   4 +-
+ zathura/zathura-version.h.old |  13 ++++
+ zathura/zathura.c             |   9 +++
+ zathura/zathura.h             |  10 ++-
+ 8 files changed, 195 insertions(+), 5 deletions(-)
+ create mode 100644 zathura/zathura-version.h.old
+
+diff --git a/meson.build b/meson.build
+index 0a76a47..34f2f7b 100644
+--- a/meson.build
++++ b/meson.build
+@@ -40,7 +40,7 @@ endif
+ # required dependencies
+ libm = cc.find_library('m', required: false)
+ girara = dependency('girara-gtk3', version: '>=0.4.5', fallback: ['girara', 'girara_dependency'])
+-glib = dependency('glib-2.0', version: '>=2.76')
++glib = dependency('glib-2.0', version: '>=2.74')
+ gio = dependency('gio-unix-2.0', required: host_machine.system() != 'windows')
+ gthread = dependency('gthread-2.0', version: '>=2.72')
+ gmodule = dependency('gmodule-no-export-2.0', version: '>=2.72')
+@@ -147,6 +147,7 @@ headers = files(
+   'zathura/page.h',
+   'zathura/plugin-api.h',
+   'zathura/types.h',
++  'zathura/zathura.h',
+ )
+ headers += version_header
+ 
+diff --git a/zathura/plugin-api.h b/zathura/plugin-api.h
+index 106294c..7b9c8d3 100644
+--- a/zathura/plugin-api.h
++++ b/zathura/plugin-api.h
+@@ -4,12 +4,14 @@
+ #define PLUGIN_API_H
+ 
+ #include <cairo.h>
++#include <glib.h>
+ 
+ #include "types.h"
+ #include "page.h"
+ #include "document.h"
+ #include "links.h"
+ #include "zathura-version.h"
++#include "macros.h"
+ 
+ typedef struct zathura_plugin_functions_s zathura_plugin_functions_t;
+ 
+@@ -230,11 +232,31 @@ typedef struct zathura_plugin_definition_s {
+   const char** mime_types;
+ } zathura_plugin_definition_t;
+ 
++/**
++ * Utility plugin initialization function type
++ */
++typedef bool (*zathura_utility_plugin_init_t)(zathura_t* zathura);
++
++/**
++ * Utility plugin definition structure
++ */
++typedef struct zathura_utility_plugin_definition_s {
++  const char* name;
++  const zathura_plugin_version_t version;
++  zathura_utility_plugin_init_t init_function;
++} zathura_utility_plugin_definition_t;
++
+ #define JOIN(x, y) JOIN2(x, y)
+ #define JOIN2(x, y) x##_##y
+ 
+ #define ZATHURA_PLUGIN_DEFINITION_SYMBOL JOIN(zathura_plugin, JOIN(ZATHURA_API_VERSION, ZATHURA_ABI_VERSION))
+ 
++/**
++ * Symbol name for utility plugins
++ */
++#define ZATHURA_UTILITY_PLUGIN_DEFINITION_SYMBOL \
++ JOIN(zathura_utility_plugin, JOIN(ZATHURA_API_VERSION, ZATHURA_ABI_VERSION))
++
+ /**
+  * Register a plugin.
+  *
+@@ -256,6 +278,22 @@ typedef struct zathura_plugin_definition_s {
+       .mime_types      = zathura_plugin_mime_types,                                                                    \
+   };
+ 
++/**
++ * Register a utility plugin.
++ *
++ * @param plugin_name the name of the plugin
++ * @param major the plugin's major version
++ * @param minor the plugin's minor version
++ * @param rev the plugin's revision
++ * @param init_func the plugin's initialization function
++ */
++#define ZATHURA_UTILITY_PLUGIN_REGISTER(plugin_name, major, minor, rev, init_func) \
++  ZATHURA_PLUGIN_API const zathura_utility_plugin_definition_t ZATHURA_UTILITY_PLUGIN_DEFINITION_SYMBOL = { \
++    .name = plugin_name, \
++    .version = { major, minor, rev }, \
++    .init_function = init_func \
++  };
++
+ #define ZATHURA_PLUGIN_MIMETYPES(...) __VA_ARGS__
+ #define ZATHURA_PLUGIN_FUNCTIONS(...) __VA_ARGS__
+ 
+diff --git a/zathura/plugin.c b/zathura/plugin.c
+index 0ad7c50..6649821 100644
+--- a/zathura/plugin.c
++++ b/zathura/plugin.c
+@@ -38,6 +38,7 @@ struct zathura_plugin_manager_s {
+   girara_list_t* path;                /**< List of plugin paths */
+   girara_list_t* type_plugin_mapping; /**< List of type -> plugin mappings */
+   girara_list_t* content_types;       /**< List of all registered content types */
++  girara_list_t* utility_plugins;    /**< List of utility plugins */
+ };
+ 
+ static void zathura_type_plugin_mapping_free(void* data) {
+@@ -60,6 +61,15 @@ static void zathura_plugin_free(void* data) {
+   }
+ }
+ 
++static void zathura_utility_plugin_free(void* data) {
++  if (data != NULL) {
++    zathura_plugin_t* plugin = data;
++    g_free(plugin->path);
++    g_module_close(plugin->handle);
++    g_free(plugin);
++  }
++}
++
+ static void add_dir(void* data, void* userdata) {
+   const char* path                         = data;
+   zathura_plugin_manager_t* plugin_manager = userdata;
+@@ -94,9 +104,10 @@ zathura_plugin_manager_t* zathura_plugin_manager_new(void) {
+   plugin_manager->path                = girara_list_new2(g_free);
+   plugin_manager->type_plugin_mapping = girara_list_new2(zathura_type_plugin_mapping_free);
+   plugin_manager->content_types       = girara_list_new2(g_free);
++  plugin_manager->utility_plugins     = girara_list_new2(zathura_utility_plugin_free);
+ 
+   if (plugin_manager->plugins == NULL || plugin_manager->path == NULL || plugin_manager->type_plugin_mapping == NULL ||
+-      plugin_manager->content_types == NULL) {
++      plugin_manager->content_types == NULL || plugin_manager->utility_plugins == NULL) {
+     zathura_plugin_manager_free(plugin_manager);
+     return NULL;
+   }
+@@ -189,6 +200,88 @@ static bool register_plugin(zathura_plugin_manager_t* plugin_manager, zathura_pl
+   return at_least_one;
+ }
+ 
++static bool register_utility_plugin(zathura_plugin_manager_t* plugin_manager, zathura_plugin_t* plugin) {
++  if (plugin == NULL || plugin_manager == NULL || plugin_manager->utility_plugins == NULL) {
++    girara_error("utility plugin: could not register");
++    return false;
++  }
++
++  girara_list_append(plugin_manager->utility_plugins, plugin);
++  girara_debug("utility plugin: registered %s", plugin->definition ? plugin->definition->name : "unknown");
++  return true;
++}
++
++static void load_utility_plugin(zathura_plugin_manager_t* plugin_manager, const char* plugindir, const char* name) {
++  char* path = g_build_filename(plugindir, name, NULL);
++  if (g_file_test(path, G_FILE_TEST_IS_REGULAR) == 0) {
++    g_free(path);
++    return;
++  }
++
++  if (check_suffix(path) == false) {
++    g_free(path);
++    return;
++  }
++
++  /* load plugin */
++  GModule* handle = g_module_open(path, G_MODULE_BIND_LOCAL);
++  if (handle == NULL) {
++    g_free(path);
++    return;
++  }
++
++  /* check for utility plugin symbol */
++  const zathura_utility_plugin_definition_t* utility_plugin_definition = NULL;
++  if (g_module_symbol(handle, G_STRINGIFY(ZATHURA_UTILITY_PLUGIN_DEFINITION_SYMBOL), (void**)&utility_plugin_definition) == FALSE ||
++      utility_plugin_definition == NULL) {
++    /* Not a utility plugin, continue with regular plugin loading */
++    g_module_close(handle);
++    g_free(path);
++    return;
++  }
++
++  /* check name */
++  if (utility_plugin_definition->name == NULL) {
++    girara_error("Utility plugin has no name.");
++    g_free(path);
++    g_module_close(handle);
++    return;
++  }
++
++  /* check init function */
++  if (utility_plugin_definition->init_function == NULL) {
++    girara_error("Utility plugin is missing init function.");
++    g_free(path);
++    g_module_close(handle);
++    return;
++  }
++
++  zathura_plugin_t* plugin = g_try_malloc0(sizeof(zathura_plugin_t));
++  if (plugin == NULL) {
++    girara_error("Failed to allocate memory for utility plugin.");
++    g_free(path);
++    g_module_close(handle);
++    return;
++  }
++
++  plugin->definition    = (const zathura_plugin_definition_t*)utility_plugin_definition;
++  plugin->content_types = NULL; /* Utility plugins don't handle content types */
++  plugin->handle        = handle;
++  plugin->path          = path;
++
++  bool ret = register_utility_plugin(plugin_manager, plugin);
++  if (ret == false) {
++    girara_error("Could not register utility plugin '%s'.", path);
++    zathura_utility_plugin_free(plugin);
++  } else {
++    girara_debug("Successfully loaded utility plugin from '%s'.", path);
++    girara_debug("utility plugin %s: version %u.%u.%u", utility_plugin_definition->name, 
++                 utility_plugin_definition->version.major,
++                 utility_plugin_definition->version.minor, 
++                 utility_plugin_definition->version.rev);
++  }
++}
++
+ static void load_plugin(zathura_plugin_manager_t* plugin_manager, const char* plugindir, const char* name) {
+   char* path = g_build_filename(plugindir, name, NULL);
+   if (g_file_test(path, G_FILE_TEST_IS_REGULAR) == 0) {
+@@ -287,6 +380,9 @@ static void load_dir(void* data, void* userdata) {
+   } else {
+     const char* name = NULL;
+     while ((name = g_dir_read_name(dir)) != NULL) {
++      /* First try to load as utility plugin */
++      load_utility_plugin(plugin_manager, plugindir, name);
++      /* Then try to load as regular document plugin */
+       load_plugin(plugin_manager, plugindir, name);
+     }
+     g_dir_close(dir);
+@@ -341,6 +437,7 @@ void zathura_plugin_manager_free(zathura_plugin_manager_t* plugin_manager) {
+     girara_list_free(plugin_manager->type_plugin_mapping);
+     girara_list_free(plugin_manager->path);
+     girara_list_free(plugin_manager->plugins);
++    girara_list_free(plugin_manager->utility_plugins);
+ 
+     g_free(plugin_manager);
+   }
+@@ -378,3 +475,19 @@ zathura_plugin_version_t zathura_plugin_get_version(const zathura_plugin_t* plug
+   zathura_plugin_version_t version = {0, 0, 0};
+   return version;
+ }
++
++void zathura_plugin_manager_init_utility_plugins(const zathura_plugin_manager_t* plugin_manager, zathura_t* zathura) {
++  if (plugin_manager == NULL || plugin_manager->utility_plugins == NULL || zathura == NULL) {
++    return;
++  }
++
++  for (size_t idx = 0; idx != girara_list_size(plugin_manager->utility_plugins); ++idx) {
++    zathura_plugin_t* plugin = girara_list_nth(plugin_manager->utility_plugins, idx);
++    const zathura_utility_plugin_definition_t* def = (const zathura_utility_plugin_definition_t*)plugin->definition;
++    
++    if (def->init_function != NULL) {
++      girara_debug("Initializing utility plugin: %s", def->name);
++      def->init_function(zathura);
++    }
++  }
++}
+diff --git a/zathura/plugin.h b/zathura/plugin.h
+index 50e8a94..5dbf133 100644
+--- a/zathura/plugin.h
++++ b/zathura/plugin.h
+@@ -51,6 +51,14 @@ bool zathura_plugin_manager_load(zathura_plugin_manager_t* plugin_manager);
+ const zathura_plugin_t* zathura_plugin_manager_get_plugin(const zathura_plugin_manager_t* plugin_manager,
+                                                           const char* type);
+ 
++/**
++ * Initialize utility plugins
++ *
++ * @param plugin_manager The plugin manager
++ * @param zathura The zathura instance
++ */
++void zathura_plugin_manager_init_utility_plugins(const zathura_plugin_manager_t* plugin_manager, zathura_t* zathura);
++
+ /**
+  * Returns a list with the plugin objects
+  *
+diff --git a/zathura/utils.c b/zathura/utils.c
+index 4944e00..b09e677 100644
+--- a/zathura/utils.c
++++ b/zathura/utils.c
+@@ -337,7 +337,7 @@ char* zathura_get_version_string(const zathura_plugin_manager_t* plugin_manager,
+     }
+   }
+ 
+-  return g_string_free_and_steal(string);
++  return g_string_free(string, FALSE);
+ }
+ 
+ GdkAtom* get_selection(zathura_t* zathura) {
+@@ -386,7 +386,7 @@ char* write_first_page_column_list(unsigned int* first_page_columns, unsigned in
+     }
+   }
+ 
+-  return g_string_free_and_steal(buffer);
++  return g_string_free(buffer, FALSE);
+ }
+ 
+ unsigned int* parse_first_page_column_list(const char* first_page_column_list, unsigned int* size) {
+diff --git a/zathura/zathura-version.h.old b/zathura/zathura-version.h.old
+new file mode 100644
+index 0000000..c272e39
+--- /dev/null
++++ b/zathura/zathura-version.h.old
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: Zlib */
++
++#ifndef ZATHURA_VERSION_H
++#define ZATHURA_VERSION_H
++
++#define ZATHURA_VERSION_MAJOR 0
++#define ZATHURA_VERSION_MINOR 5
++#define ZATHURA_VERSION_REV 0
++#define ZATHURA_VERSION "0.5.0"
++#define ZATHURA_API_VERSION 4
++#define ZATHURA_ABI_VERSION 4
++
++#endif
+\ No newline at end of file
+diff --git a/zathura/zathura.c b/zathura/zathura.c
+index 386f8fd..dde8e63 100644
+--- a/zathura/zathura.c
++++ b/zathura/zathura.c
+@@ -402,6 +402,9 @@ bool zathura_init(zathura_t* zathura) {
+     girara_warning("Found no plugins. Please install at least one plugin.");
+   }
+ 
++  /* initialize utility plugins */
++  zathura_plugin_manager_init_utility_plugins(zathura->plugins.manager, zathura);
++
+   /* configuration */
+   config_load_default(zathura);
+   config_load_files(zathura);
+@@ -1777,3 +1780,9 @@ zathura_document_t* zathura_get_document(zathura_t* zathura) {
+ 
+   return zathura->document;
+ }
++
++girara_session_t* zathura_get_session(zathura_t* zathura) {
++  g_return_val_if_fail(zathura != NULL, NULL);
++
++  return zathura->ui.session;
++}
+diff --git a/zathura/zathura.h b/zathura/zathura.h
+index 7f65ca7..a8615b9 100644
+--- a/zathura/zathura.h
++++ b/zathura/zathura.h
+@@ -493,6 +493,14 @@ bool zathura_has_document(zathura_t* zathura);
+  * @param zathura The zathura session
+  * @return the currently opened document
+  */
+-zathura_document_t* zathura_get_document(zathura_t* zathura);
++ZATHURA_PLUGIN_API zathura_document_t* zathura_get_document(zathura_t* zathura);
++
++/**
++ * Get the girara session from zathura instance
++ *
++ * @param zathura The zathura session
++ * @return the girara session
++ */
++ZATHURA_PLUGIN_API girara_session_t* zathura_get_session(zathura_t* zathura);
+ 
+ #endif // ZATHURA_H
+-- 
+2.39.5
+
