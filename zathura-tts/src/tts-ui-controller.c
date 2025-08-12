@@ -146,11 +146,13 @@ tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller)
     bool all_registered = true;
     
     girara_info("🔧 DEBUG: Registering %zu TTS shortcuts...", num_shortcuts);
+    girara_info("🔧 DEBUG: Controller session: %p", (void*)controller->session);
     
     for (size_t i = 0; i < num_shortcuts; i++) {
         const tts_shortcut_t* shortcut = &default_shortcuts[i];
         
-        girara_debug("🔧 DEBUG: Registering shortcut %zu: %s (action %d)", i, shortcut->description, shortcut->action);
+        girara_info("🔧 DEBUG: Registering shortcut %zu: %s (action %d, key %u, modifiers %u)", 
+                    i, shortcut->description, shortcut->action, shortcut->key, shortcut->modifiers);
         
         /* Create shortcut info for tracking */
         tts_shortcut_info_t* info = tts_shortcut_info_new(
@@ -218,10 +220,12 @@ tts_ui_controller_register_shortcuts(tts_ui_controller_t* controller)
         }
         
         if (registered && controller->registered_shortcuts != NULL) {
-            girara_debug("✅ DEBUG: Successfully registered shortcut: %s", shortcut->description);
+            girara_info("✅ DEBUG: Successfully registered shortcut: %s", shortcut->description);
             girara_list_append(controller->registered_shortcuts, info);
         } else {
-            girara_debug("❌ DEBUG: Failed to register shortcut: %s", shortcut->description);
+            girara_info("❌ DEBUG: Failed to register shortcut: %s (registered=%s, shortcuts_list=%p)", 
+                        shortcut->description, registered ? "true" : "false", 
+                        (void*)controller->registered_shortcuts);
             tts_shortcut_info_free(info);
             all_registered = false;
         }
@@ -514,30 +518,54 @@ sc_tts_pause_resume(girara_session_t* session, girara_argument_t* argument, gira
     girara_info("🎯 DEBUG: sc_tts_pause_resume called - Ctrl+R pressed!");
     
     tts_ui_controller_t* controller = tts_ui_controller_get_from_session(session);
-    if (controller == NULL || controller->audio_controller == NULL) {
-        girara_debug("🚨 DEBUG: sc_tts_pause_resume - controller or audio_controller is NULL");
+    girara_info("🔍 DEBUG: sc_tts_pause_resume - controller: %p", (void*)controller);
+    
+    if (controller == NULL) {
+        girara_info("🚨 DEBUG: sc_tts_pause_resume - controller is NULL");
         return false;
     }
     
-    girara_debug("✅ DEBUG: sc_tts_pause_resume - controller found, checking current state...");
+    girara_info("🔍 DEBUG: sc_tts_pause_resume - audio_controller: %p", (void*)controller->audio_controller);
     
+    if (controller->audio_controller == NULL) {
+        girara_info("🚨 DEBUG: sc_tts_pause_resume - audio_controller is NULL");
+        return false;
+    }
+    
+    girara_info("✅ DEBUG: sc_tts_pause_resume - controller found, checking current state...");
+    
+    girara_info("🔍 DEBUG: sc_tts_pause_resume - about to call get_state...");
     tts_audio_state_t current_state = tts_audio_controller_get_state(controller->audio_controller);
+    girara_info("🔍 DEBUG: sc_tts_pause_resume - got state: %d", current_state);
+    
+    girara_info("🔍 DEBUG: sc_tts_pause_resume - handling state %d", current_state);
     
     if (current_state == TTS_AUDIO_STATE_PLAYING) {
+        girara_info("🔍 DEBUG: sc_tts_pause_resume - pausing playback");
         if (tts_audio_controller_pause_session(controller->audio_controller)) {
             tts_ui_controller_show_status(controller, "TTS: Paused", 2000);
+            girara_info("✅ DEBUG: sc_tts_pause_resume - successfully paused");
         } else {
             tts_ui_controller_show_status(controller, "TTS: Failed to pause", 2000);
+            girara_info("❌ DEBUG: sc_tts_pause_resume - failed to pause");
             return false;
         }
     } else if (current_state == TTS_AUDIO_STATE_PAUSED) {
+        girara_info("🔍 DEBUG: sc_tts_pause_resume - resuming playback");
         if (tts_audio_controller_resume_session(controller->audio_controller)) {
             tts_ui_controller_show_status(controller, "TTS: Resumed", 2000);
+            girara_info("✅ DEBUG: sc_tts_pause_resume - successfully resumed");
         } else {
             tts_ui_controller_show_status(controller, "TTS: Failed to resume", 2000);
+            girara_info("❌ DEBUG: sc_tts_pause_resume - failed to resume");
             return false;
         }
+    } else if (current_state == TTS_AUDIO_STATE_STOPPED) {
+        girara_info("🔍 DEBUG: sc_tts_pause_resume - TTS is stopped, showing message");
+        tts_ui_controller_show_status(controller, "TTS: Start TTS first (Ctrl+T)", 3000);
+        return true; // Not an error, just informational
     } else {
+        girara_info("🔍 DEBUG: sc_tts_pause_resume - unexpected state %d", current_state);
         tts_ui_controller_show_status(controller, "TTS: Not active", 2000);
         return false;
     }

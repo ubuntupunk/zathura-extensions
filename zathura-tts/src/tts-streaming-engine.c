@@ -174,18 +174,21 @@ tts_streaming_engine_stop(tts_streaming_engine_t* engine)
     
     g_mutex_unlock(&engine->state_mutex);
     
-    /* Give threads time to exit gracefully */
-    usleep(50000); /* Wait 50ms */
+    /* Wait for threads to finish gracefully */
+    girara_info("🔧 DEBUG: Waiting for threads to finish...");
     
-    /* Clean up thread references */
     if (engine->feeder_thread != NULL) {
-        g_thread_unref(engine->feeder_thread);
+        girara_info("🔧 DEBUG: Joining feeder thread...");
+        g_thread_join(engine->feeder_thread);
         engine->feeder_thread = NULL;
+        girara_info("✅ DEBUG: Feeder thread joined");
     }
     
     if (engine->audio_thread != NULL) {
-        g_thread_unref(engine->audio_thread);
+        girara_info("🔧 DEBUG: Joining audio thread...");
+        g_thread_join(engine->audio_thread);
         engine->audio_thread = NULL;
+        girara_info("✅ DEBUG: Audio thread joined");
     }
     
     /* Clean up process */
