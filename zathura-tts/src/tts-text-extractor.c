@@ -3,6 +3,7 @@
  */
 
 #include "tts-text-extractor.h"
+#include <girara/log.h>
 #include <string.h>
 #include <ctype.h>
 #include <regex.h>
@@ -105,13 +106,35 @@ tts_text_segment_t* tts_text_segment_new(const char* text, zathura_rectangle_t b
         return NULL;
     }
     
+    /* Validate UTF-8 text to prevent corruption */
+    if (!g_utf8_validate(text, -1, NULL)) {
+        girara_warning("Invalid UTF-8 text in segment %d, skipping", segment_id);
+        return NULL;
+    }
+    
     tts_text_segment_t* segment = g_malloc0(sizeof(tts_text_segment_t));
     if (segment == NULL) {
         return NULL;
     }
     
-    segment->text = g_strdup(text);
+    /* Create a safe copy of the text with additional validation */
+    size_t text_len = strlen(text);
+    if (text_len == 0 || text_len > 10000) {
+        girara_warning("Text segment %d has invalid length: %zu", segment_id, text_len);
+        g_free(segment);
+        return NULL;
+    }
+    
+    segment->text = g_strndup(text, text_len);
     if (segment->text == NULL) {
+        g_free(segment);
+        return NULL;
+    }
+    
+    /* Final validation of the copied text */
+    if (!g_utf8_validate(segment->text, -1, NULL)) {
+        girara_warning("Text segment %d failed final UTF-8 validation after copy", segment_id);
+        g_free(segment->text);
         g_free(segment);
         return NULL;
     }

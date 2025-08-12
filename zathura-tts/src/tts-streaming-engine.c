@@ -47,6 +47,7 @@ tts_streaming_engine_new(tts_engine_type_t engine_type)
     g_cond_init(&engine->queue_cond);
     engine->feeder_thread = NULL;
     engine->should_stop_feeding = false;
+    engine->is_paused = false;
     
     /* Initialize audio management */
     engine->audio_thread = NULL;
@@ -137,7 +138,7 @@ tts_streaming_engine_start(tts_streaming_engine_t* engine)
     engine->should_stop_audio = false;
     engine->audio_thread = g_thread_new("tts-audio", tts_audio_player_thread, engine);
     
-    /* Set active state */
+    /* Set playing state */
     tts_streaming_engine_set_state(engine, TTS_STREAMING_STATE_ACTIVE);
     
     g_mutex_unlock(&engine->state_mutex);
@@ -206,6 +207,67 @@ tts_streaming_engine_stop(tts_streaming_engine_t* engine)
     return true;
 }
 
+bool 
+tts_streaming_engine_pause(tts_streaming_engine_t* engine) 
+{
+    if (engine == NULL) {
+        return false;
+    }
+    
+    g_mutex_lock(&engine->state_mutex);
+    
+    if (engine->state != TTS_STREAMING_STATE_ACTIVE) {
+        g_mutex_unlock(&engine->state_mutex);
+        return false;
+    }
+    
+    girara_info("🔧 DEBUG: Pausing streaming TTS engine");
+    
+    /* Set paused flag */
+    g_mutex_lock(&engine->queue_mutex);
+    engine->is_paused = true;
+    g_mutex_unlock(&engine->queue_mutex);
+    
+    /* Set paused state */
+    tts_streaming_engine_set_state(engine, TTS_STREAMING_STATE_PAUSED);
+    
+    g_mutex_unlock(&engine->state_mutex);
+    
+    girara_info("✅ DEBUG: Streaming TTS engine paused");
+    return true;
+}
+
+bool 
+tts_streaming_engine_resume(tts_streaming_engine_t* engine) 
+{
+    if (engine == NULL) {
+        return false;
+    }
+    
+    g_mutex_lock(&engine->state_mutex);
+    
+    if (engine->state != TTS_STREAMING_STATE_PAUSED) {
+        g_mutex_unlock(&engine->state_mutex);
+        return false;
+    }
+    
+    girara_info("🔧 DEBUG: Resuming streaming TTS engine");
+    
+    /* Clear paused flag and wake up feeder thread */
+    g_mutex_lock(&engine->queue_mutex);
+    engine->is_paused = false;
+    g_cond_broadcast(&engine->queue_cond);
+    g_mutex_unlock(&engine->queue_mutex);
+    
+    /* Set active state */
+    tts_streaming_engine_set_state(engine, TTS_STREAMING_STATE_ACTIVE);
+    
+    g_mutex_unlock(&engine->state_mutex);
+    
+    girara_info("✅ DEBUG: Streaming TTS engine resumed");
+    return true;
+}
+
 /* Text management */
 
 bool 
@@ -221,8 +283,25 @@ tts_streaming_engine_queue_segment(tts_streaming_engine_t* engine, tts_text_segm
     g_cond_signal(&engine->queue_cond);
     g_mutex_unlock(&engine->queue_mutex);
     
-    girara_info("🔧 DEBUG: Queued text segment %d (queue size: %zu): '%.50s%s'", 
-                 segment->segment_id, queue_size, segment->text, strlen(segment->text) > 50 ? "..." : "");
+    /* Validate text before logging to prevent crashes */
+    if (segment->text != NULL) {
+        /* Check for valid UTF-8 and reasonable length */
+        if (g_utf8_validate(segment->text, -1, NULL) && strlen(segment->text) > 0 && strlen(segment->text) < 10000) {
+            size_t text_len = strlen(segment->text);
+            girara_info("🔧 DEBUG: Queued text segment %d (queue size: %zu): '%.50s%s'", 
+                         segment->segment_id, queue_size, segment->text, text_len > 50 ? "..." : "");
+        } else {
+            girara_warning("🚨 DEBUG: Queued text segment %d has invalid/corrupted text (len=%zu, valid_utf8=%s)", 
+                           segment->segment_id, 
+                           segment->text ? strlen(segment->text) : 0,
+                           g_utf8_validate(segment->text, -1, NULL) ? "yes" : "no");
+            /* Don't queue corrupted segments */
+            return false;
+        }
+    } else {
+        girara_warning("🚨 DEBUG: Queued text segment %d has NULL text", segment->segment_id);
+        return false;
+    }
     
     return true;
 }
@@ -323,6 +402,11 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
     if (pid == 0) {
         /* Child process */
         
+        /* Create new process group so we can kill all child processes */
+        if (setpgid(0, 0) == -1) {
+            girara_warning("Failed to create new process group");
+        }
+        
         /* Set up stdin pipe only - stdout goes to aplay directly */
         dup2(stdin_pipe[0], STDIN_FILENO);
         
@@ -401,15 +485,27 @@ tts_streaming_engine_cleanup_process(tts_streaming_engine_t* engine)
         pid_t result = waitpid(engine->process_pid, &status, WNOHANG);
         
         if (result == 0) {
-            /* Process still running, try SIGTERM */
-            girara_info("🔧 DEBUG: Process still running, sending SIGTERM");
-            if (kill(engine->process_pid, SIGTERM) == 0) {
+            /* Process still running, kill the entire process group to get all child processes */
+            girara_info("🔧 DEBUG: Process still running, sending SIGTERM to process group");
+            
+            /* Kill the entire process group (negative PID) to kill shell and all children */
+            if (kill(-engine->process_pid, SIGTERM) == 0) {
                 usleep(200000); /* Wait 200ms */
                 
                 /* Check again */
                 result = waitpid(engine->process_pid, &status, WNOHANG);
                 if (result == 0) {
-                    girara_info("🔧 DEBUG: Process still running, using SIGKILL");
+                    girara_info("🔧 DEBUG: Process group still running, using SIGKILL");
+                    kill(-engine->process_pid, SIGKILL);
+                    waitpid(engine->process_pid, &status, 0);
+                }
+            } else {
+                /* Fallback to killing just the main process */
+                girara_info("🔧 DEBUG: Failed to kill process group, trying individual process");
+                kill(engine->process_pid, SIGTERM);
+                usleep(200000);
+                result = waitpid(engine->process_pid, &status, WNOHANG);
+                if (result == 0) {
                     kill(engine->process_pid, SIGKILL);
                     waitpid(engine->process_pid, &status, 0);
                 }
@@ -433,8 +529,8 @@ tts_text_feeder_thread(gpointer data)
     while (!engine->should_stop_feeding) {
         g_mutex_lock(&engine->queue_mutex);
         
-        /* Wait for text segments */
-        while (g_queue_is_empty(engine->text_queue) && !engine->should_stop_feeding) {
+        /* Wait for text segments or pause state change */
+        while ((g_queue_is_empty(engine->text_queue) || engine->is_paused) && !engine->should_stop_feeding) {
             g_cond_wait(&engine->queue_cond, &engine->queue_mutex);
         }
         
@@ -451,6 +547,13 @@ tts_text_feeder_thread(gpointer data)
         girara_info("🔧 DEBUG: Text feeder got segment: %p (remaining in queue: %zu)", (void*)segment, remaining_queue_size);
         
         if (segment != NULL && segment->text != NULL) {
+            /* Validate segment before processing */
+            if (!g_utf8_validate(segment->text, -1, NULL) || strlen(segment->text) == 0 || strlen(segment->text) > 10000) {
+                girara_warning("🚨 DEBUG: Skipping corrupted segment %d in feeder thread", segment->segment_id);
+                tts_text_segment_free(segment);
+                continue;
+            }
+            
             /* Send text to TTS process */
             if (engine->text_channel != NULL && strlen(segment->text) > 0) {
                 gsize bytes_written;
@@ -464,11 +567,28 @@ tts_text_feeder_thread(gpointer data)
                                                           &error);
                 
                 if (status == G_IO_STATUS_NORMAL) {
-                    g_io_channel_write_chars(engine->text_channel, "\n", 1, &bytes_written, NULL);
-                    g_io_channel_flush(engine->text_channel, NULL);
+                    /* Write newline */
+                    GError* newline_error = NULL;
+                    status = g_io_channel_write_chars(engine->text_channel, "\n", 1, &bytes_written, &newline_error);
                     
-                    girara_info("✅ DEBUG: Fed text segment %d to TTS process: '%.30s%s'", 
-                               segment->segment_id, segment->text, strlen(segment->text) > 30 ? "..." : "");
+                    if (status == G_IO_STATUS_NORMAL) {
+                        /* Flush the channel */
+                        GError* flush_error = NULL;
+                        GIOStatus flush_status = g_io_channel_flush(engine->text_channel, &flush_error);
+                        
+                        if (flush_status == G_IO_STATUS_NORMAL) {
+                            girara_info("✅ DEBUG: Fed text segment %d to TTS process: '%.30s%s'", 
+                                       segment->segment_id, segment->text, strlen(segment->text) > 30 ? "..." : "");
+                        } else {
+                            girara_error("🚨 DEBUG: Failed to flush text to TTS process: %s", 
+                                         flush_error ? flush_error->message : "unknown error");
+                            if (flush_error) g_error_free(flush_error);
+                        }
+                    } else {
+                        girara_error("🚨 DEBUG: Failed to write newline to TTS process: %s", 
+                                     newline_error ? newline_error->message : "unknown error");
+                        if (newline_error) g_error_free(newline_error);
+                    }
                 } else {
                     girara_error("🚨 DEBUG: Failed to write text to TTS process: %s", 
                                  error ? error->message : "unknown error");

@@ -45,6 +45,7 @@ struct tts_streaming_engine_s {
     GCond queue_cond;
     GThread* feeder_thread;
     bool should_stop_feeding;
+    bool is_paused;
     
     /* Audio management */
     GThread* audio_thread;
@@ -69,6 +70,8 @@ void tts_streaming_engine_free(tts_streaming_engine_t* engine);
 /* Engine control */
 bool tts_streaming_engine_start(tts_streaming_engine_t* engine);
 bool tts_streaming_engine_stop(tts_streaming_engine_t* engine);
+bool tts_streaming_engine_pause(tts_streaming_engine_t* engine);
+bool tts_streaming_engine_resume(tts_streaming_engine_t* engine);
 bool tts_streaming_engine_pause(tts_streaming_engine_t* engine);
 bool tts_streaming_engine_resume(tts_streaming_engine_t* engine);
 

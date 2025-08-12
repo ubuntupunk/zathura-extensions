@@ -240,6 +240,14 @@ tts_audio_controller_pause_session(tts_audio_controller_t* controller)
         return false;
     }
     
+    /* Pause streaming engine if active */
+    if (controller->streaming_engine != NULL) {
+        tts_streaming_engine_t* streaming_engine = (tts_streaming_engine_t*)controller->streaming_engine;
+        if (!tts_streaming_engine_pause(streaming_engine)) {
+            return false;
+        }
+    }
+    
     return tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PAUSED);
 }
 
@@ -248,6 +256,14 @@ tts_audio_controller_resume_session(tts_audio_controller_t* controller)
 {
     if (controller == NULL) {
         return false;
+    }
+    
+    /* Resume streaming engine if paused */
+    if (controller->streaming_engine != NULL) {
+        tts_streaming_engine_t* streaming_engine = (tts_streaming_engine_t*)controller->streaming_engine;
+        if (!tts_streaming_engine_resume(streaming_engine)) {
+            return false;
+        }
     }
     
     return tts_audio_controller_set_state(controller, TTS_AUDIO_STATE_PLAYING);
