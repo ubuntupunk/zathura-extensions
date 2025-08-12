@@ -290,10 +290,10 @@ tts_streaming_engine_spawn_process(tts_streaming_engine_t* engine)
                 /* Check if we're in a Poetry environment */
                 if (g_file_test(g_strdup_printf("%s/pyproject.toml", project_dir), G_FILE_TEST_EXISTS)) {
                     /* Use Poetry-managed Piper with direct audio pipeline */
-                    command = g_strdup_printf("sh -c \"cd '%s' && poetry run piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw | aplay -r 22050 -f S16_LE -t raw -\"", project_dir);
+                    command = g_strdup_printf("sh -c \"cd '%s' && poetry run piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw | aplay -r 22050 -f S16_LE -t raw -B 1000000 -\"", project_dir);
                 } else {
                     /* Try system-installed piper with direct audio pipeline */
-                    command = g_strdup("sh -c \"piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw | aplay -r 22050 -f S16_LE -t raw -\"");
+                    command = g_strdup("sh -c \"piper --model '/home/user/Projects/zathura/zathura-tts/voices/en_US-lessac-medium.onnx' --output-raw | aplay -r 22050 -f S16_LE -t raw -B 1000000 -\"");
                 }
                 g_free(project_dir);
             }

@@ -12,22 +12,17 @@ plugin_name = 'zathura-tts'
 plugin_api_version = '6'
 
 # Dependencies
-# Use installed Zathura headers
-zathura_inc = include_directories('/usr/local/include/zathura')
+zathura_dep = dependency('zathura', version: '>=0.5.3', required: true)
+girara_dep = dependency('girara-gtk3', required: true)
 glib_dep = dependency('glib-2.0', version: '>=2.50')
 gtk_dep = dependency('gtk+-3.0', version: '>=3.22')
 
-# Use the installed girara library
-girara_dep = dependency('girara-gtk3', method: 'pkg-config', required: true)
-
-# Get the plugin directory from zathura pkg-config
-plugin_dir = '/usr/local/lib/x86_64-linux-gnu/zathura'
-
-# Create a dummy zathura dependency since we're using local headers
-zathura_dep = declare_dependency(
-  include_directories: zathura_inc,
-  compile_args: ['-DZATHURA_API_VERSION=6', '-DZATHURA_ABI_VERSION=7']
-)
+# Get plugin directory from zathura
+if zathura_dep.type_name() == 'pkgconfig'
+  plugin_dir = zathura_dep.get_variable(pkgconfig: 'plugindir')
+else
+  plugin_dir = join_paths(get_option('libdir'), 'zathura')
+endif
 
 # Optional dependencies for TTS engines
 speechd_dep = dependency('speech-dispatcher', required: false)
@@ -61,7 +56,7 @@ plugin_sources = [
   'src/tts-ui-controller.c',
   'src/tts-config.c',
   'src/tts-error.c',
-  # Note: zathura-stubs.c is NOT included - Zathura provides these functions at runtime
+  # Note: zathura-stubs.c removed - using proper zathura dependency
 ]
 
 # Plugin dependencies
@@ -76,7 +71,7 @@ if speechd_dep.found()
   plugin_dependencies += speechd_dep
 endif
 
-# Build the plugin
+# Build the plugin as a utility plugin
 plugin = shared_library(
   plugin_name,
   plugin_sources,
@@ -85,9 +80,10 @@ plugin = shared_library(
   install: true,
   install_dir: plugin_dir,
   name_prefix: '',
-  # Allow undefined symbols - Zathura will provide them at runtime
+  gnu_symbol_visibility: 'hidden',
+  # Allow undefined symbols - zathura will provide them at runtime
   link_args: ['-Wl,--unresolved-symbols=ignore-all'],
-  override_options: ['b_lundef=false'],
+  override_options: ['b_lundef=false']
 )
 
 # Plugin metadata file

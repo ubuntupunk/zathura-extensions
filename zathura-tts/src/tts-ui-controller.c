@@ -420,15 +420,61 @@ sc_tts_toggle(girara_session_t* session, girara_argument_t* argument, girara_eve
         }
         girara_info("✅ DEBUG: sc_tts_toggle - page found, extracting text...");
         
-        /* Extract text segments from current page */
+        /* Extract text segments from current page onwards (multi-page reading) */
         zathura_error_t error = ZATHURA_ERROR_OK;
-        girara_list_t* segments = tts_extract_text_segments(page, &error);
-        girara_info("🔍 DEBUG: sc_tts_toggle - text extraction result: segments=%p, error=%d", (void*)segments, error);
+        girara_list_t* segments = girara_list_new();
+        girara_list_set_free_function(segments, (girara_free_function_t)tts_text_segment_free);
+        
+        unsigned int total_pages = zathura_document_get_number_of_pages(document);
+        unsigned int pages_to_read = 3; /* Read current page + next 2 pages (configurable) */
+        
+        girara_info("🔍 DEBUG: sc_tts_toggle - extracting text from %u pages starting from page %u (total pages: %u)", 
+                    pages_to_read, current_page_number, total_pages);
+        
+        for (unsigned int i = 0; i < pages_to_read && (current_page_number + i) < total_pages; i++) {
+            unsigned int page_num = current_page_number + i;
+            zathura_page_t* current_page = zathura_document_get_page(document, page_num);
+            
+            if (current_page != NULL) {
+                girara_list_t* page_segments = tts_extract_text_segments(current_page, &error);
+                if (page_segments != NULL && girara_list_size(page_segments) > 0) {
+                    /* Copy all segments from this page to the main list */
+                    for (size_t j = 0; j < girara_list_size(page_segments); j++) {
+                        tts_text_segment_t* original_segment = girara_list_nth(page_segments, j);
+                        if (original_segment != NULL && original_segment->text != NULL) {
+                            /* Create a new segment copy to avoid double-free issues */
+                            tts_text_segment_t* new_segment = tts_text_segment_new(
+                                original_segment->text,
+                                original_segment->bounds,
+                                original_segment->page_number,
+                                original_segment->segment_id,
+                                original_segment->type
+                            );
+                            if (new_segment != NULL) {
+                                girara_list_append(segments, new_segment);
+                            }
+                        }
+                    }
+                    girara_info("✅ DEBUG: sc_tts_toggle - added %zu segments from page %u", 
+                                girara_list_size(page_segments), page_num);
+                    
+                    /* Free the page segments normally */
+                    girara_list_free(page_segments);
+                } else {
+                    girara_info("🔍 DEBUG: sc_tts_toggle - no text found on page %u", page_num);
+                    if (page_segments != NULL) {
+                        girara_list_free(page_segments);
+                    }
+                }
+            }
+        }
+        
+        girara_info("🔍 DEBUG: sc_tts_toggle - text extraction result: segments=%p, total_segments=%zu, error=%d", 
+                    (void*)segments, girara_list_size(segments), error);
         
         if (segments == NULL || girara_list_size(segments) == 0) {
-            girara_info("🚨 DEBUG: sc_tts_toggle - no text segments found (segments=%p, size=%zu)", 
-                        (void*)segments, segments ? girara_list_size(segments) : 0);
-            tts_ui_controller_show_status(controller, "TTS: No readable text found on page", 2000);
+            girara_info("🚨 DEBUG: sc_tts_toggle - no text segments found across %u pages", pages_to_read);
+            tts_ui_controller_show_status(controller, "TTS: No readable text found", 2000);
             if (segments != NULL) {
                 girara_list_free(segments);
             }

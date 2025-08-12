@@ -13,7 +13,7 @@
 #ifndef ZATHURA_TTS_PLUGIN_H
 #define ZATHURA_TTS_PLUGIN_H
 
-#include "plugin-api.h"
+#include <zathura/plugin-api.h>
 #include <girara/types.h>
 #include <glib.h>
 
@@ -108,7 +108,7 @@ zathura_error_t tts_plugin_register(zathura_t* zathura);
  * @see tts_plugin_register(), tts_plugin_cleanup()
  * @since 1.0.0
  */
-zathura_error_t tts_plugin_init(zathura_t* zathura);
+bool tts_plugin_init(zathura_t* zathura);
 
 /**
  * @brief Clean up plugin resources and shutdown

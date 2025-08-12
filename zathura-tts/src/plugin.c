@@ -4,213 +4,142 @@
 #include "tts-ui-controller.h"
 #include "tts-config.h"
 #include "tts-error.h"
-#include "zathura-plugin.h"
-#include "plugin-api.h"
+#include <zathura/plugin-api.h>
 #include <girara/utils.h>
 #include <girara/log.h>
+#include <girara/session.h>
 #include <string.h>
 #include <stdlib.h>
+
+/* Forward declaration for zathura function */
+extern girara_session_t* zathura_get_session(zathura_t* zathura);
 
 /* Global plugin instance */
 static tts_plugin_t* g_tts_plugin = NULL;
 
-/* Global initialization flag */
-static bool g_tts_config_registered = false;
-
-/* Global zathura instance for deferred configuration registration */
-static zathura_t* g_tts_plugin_zathura_instance = NULL;
-
-/* Plugin registration function */
-zathura_error_t
-tts_plugin_register(zathura_t* zathura)
-{
-  if (zathura == NULL) {
-    girara_error("TTS plugin registration failed: invalid zathura instance");
-    return ZATHURA_ERROR_INVALID_ARGUMENTS;
-  }
-
-  /* Check if already registered */
-  if (g_tts_plugin != NULL && g_tts_plugin->initialized) {
-    girara_warning("TTS plugin already registered");
-    return ZATHURA_ERROR_OK;
-  }
-
-  /* Allocate plugin instance */
-  g_tts_plugin = g_malloc0(sizeof(tts_plugin_t));
-  if (g_tts_plugin == NULL) {
-    girara_error("TTS plugin registration failed: memory allocation error");
-    return ZATHURA_ERROR_OUT_OF_MEMORY;
-  }
-
-  /* Set plugin metadata */
-  g_tts_plugin->name = g_strdup(TTS_PLUGIN_NAME);
-  g_tts_plugin->version = g_strdup(TTS_PLUGIN_VERSION);
-  g_tts_plugin->zathura = zathura;
-  g_tts_plugin->session = NULL;
-  g_tts_plugin->initialized = false;
-
-  girara_info("TTS plugin registered successfully: %s v%s", 
-              g_tts_plugin->name, g_tts_plugin->version);
-              fprintf(stderr, "=== TTS PLUGIN LOADED SUCCESSFULLY ===\n");
-  return ZATHURA_ERROR_OK;
-}
-
-zathura_error_t
+/* Plugin initialization function for utility plugin API */
+bool
 tts_plugin_init(zathura_t* zathura)
 {
   if (zathura == NULL) {
     girara_error("TTS plugin initialization failed: invalid zathura instance");
-    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+    return false;
   }
 
-  /* Ensure plugin is registered first */
+  /* Allocate plugin instance if not already done */
   if (g_tts_plugin == NULL) {
-    zathura_error_t result = tts_plugin_register(zathura);
-    if (result != ZATHURA_ERROR_OK) {
-      girara_error("TTS plugin initialization failed: registration error");
-      return result;
+    g_tts_plugin = g_malloc0(sizeof(tts_plugin_t));
+    if (g_tts_plugin == NULL) {
+      girara_error("TTS plugin initialization failed: memory allocation error");
+      return false;
     }
+
+    /* Set plugin metadata */
+    g_tts_plugin->name = g_strdup("zathura-tts");
+    g_tts_plugin->version = g_strdup("1.0.0");
+    g_tts_plugin->zathura = zathura;
+    g_tts_plugin->session = NULL;
+    g_tts_plugin->initialized = false;
   }
 
-  /* Check if already initialized */
   if (g_tts_plugin->initialized) {
     girara_warning("TTS plugin already initialized");
-    return ZATHURA_ERROR_OK;
+    return true;
   }
 
   girara_info("Initializing TTS plugin...");
 
-  /* Validate zathura instance matches registered instance */
-  if (g_tts_plugin->zathura != zathura) {
-    girara_error("TTS plugin initialization failed: zathura instance mismatch");
-    tts_plugin_cleanup();
-    return ZATHURA_ERROR_INVALID_ARGUMENTS;
+  /* Get girara session */
+  girara_session_t* girara_session = zathura_get_session(zathura);
+  if (girara_session == NULL) {
+    girara_error("TTS plugin initialization failed: girara session not available");
+    return false;
   }
 
-  /* Initialize TTS session */
-  g_tts_plugin->session = g_malloc0(sizeof(tts_session_t));
-  if (g_tts_plugin->session == NULL) {
+  /* Create TTS session */
+  tts_session_t* session = g_malloc0(sizeof(tts_session_t));
+  if (session == NULL) {
     girara_error("TTS plugin initialization failed: session allocation error");
-    tts_plugin_cleanup();
-    return ZATHURA_ERROR_OUT_OF_MEMORY;
+    return false;
   }
 
-  tts_session_t* session = g_tts_plugin->session;
+  /* Initialize session */
   session->zathura = zathura;
-  session->girara_session = NULL; /* Will be set by UI controller when needed */
+  session->girara_session = girara_session;
   session->active = false;
 
-  /* Initialize TTS subsystems */
-  girara_info("Initializing TTS subsystems...");
+  /* Store session in plugin */
+  g_tts_plugin->session = session;
 
-  /* 1. Initialize configuration and register settings with Zathura */
+  /* 1. Initialize configuration */
+  girara_info("Initializing TTS configuration...");
   session->config = tts_config_new();
   if (session->config == NULL) {
-    girara_error("TTS plugin initialization failed: config allocation error");
+    girara_error("TTS plugin initialization failed: configuration initialization error");
     tts_plugin_cleanup();
-    return ZATHURA_ERROR_OUT_OF_MEMORY;
+    return false;
   }
-  
-  /* Register TTS configuration options with Zathura's configuration system */
-  girara_session_t* girara_session = zathura_get_session(zathura);
-  girara_debug("🔧 DEBUG: tts_plugin_init - girara_session: %p", (void*)girara_session);
-  if (girara_session == NULL) {
-    girara_error("TTS plugin initialization failed: could not get girara session");
-    tts_plugin_cleanup();
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-  
-  session->girara_session = girara_session;
-  
-  /* Register all TTS configuration options */
-  if (!tts_config_register_settings(session->config, girara_session)) {
-    girara_error("TTS plugin initialization failed: could not register configuration settings");
-    tts_plugin_cleanup();
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-  
-  /* Load configuration values from Zathura's settings */
-  if (!tts_config_load_from_zathura(session->config, girara_session)) {
-    girara_warning("Failed to load some TTS configuration values, using defaults");
+
+  /* Load default configuration */
+  if (!tts_config_load_default(session->config)) {
+    girara_warning("Failed to load default TTS configuration, using built-in defaults");
   }
 
   /* 2. Initialize TTS engine */
-  zathura_error_t engine_error;
-  tts_engine_type_t preferred_engine = tts_config_get_preferred_engine(session->config);
-  
-  /* Try preferred engine first, then fallback to available engines */
-  session->engine = tts_engine_new(preferred_engine, &engine_error);
-  if (session->engine == NULL || !session->engine->is_available) {
-    girara_warning("Preferred TTS engine not available, trying fallbacks...");
-    
-    /* Try to get any available engine */
-    tts_engine_type_t fallback_engine = tts_engine_get_preferred_type(&engine_error);
-    if (fallback_engine != TTS_ENGINE_NONE) {
-      if (session->engine != NULL) {
-        tts_engine_free(session->engine);
-      }
-      session->engine = tts_engine_new(fallback_engine, &engine_error);
-    }
-  }
-
-  if (session->engine == NULL || !session->engine->is_available) {
-    girara_error("TTS plugin initialization failed: no TTS engine available");
+  girara_info("Initializing TTS engine...");
+  zathura_error_t engine_error = ZATHURA_ERROR_OK;
+  session->engine = tts_engine_new(TTS_ENGINE_PIPER, &engine_error);
+  if (session->engine == NULL) {
+    girara_error("TTS plugin initialization failed: TTS engine initialization error: %d", engine_error);
     tts_plugin_cleanup();
-    return ZATHURA_ERROR_UNKNOWN;
+    return false;
   }
 
-  /* Initialize the engine with configuration */
+  /* Initialize engine with configuration */
   tts_engine_config_t* engine_config = tts_engine_config_new();
-  if (engine_config != NULL) {
-    engine_config->speed = tts_config_get_default_speed(session->config);
-    engine_config->volume = tts_config_get_default_volume(session->config);
-    
-    /* Only set voice name if it's not "default" - let engine use its own default */
-    const char* preferred_voice = tts_config_get_preferred_voice(session->config);
-    if (preferred_voice && strcmp(preferred_voice, "default") != 0) {
-      engine_config->voice_name = g_strdup(preferred_voice);
-    } else {
-      engine_config->voice_name = NULL; /* Let engine use its default model */
-    }
-    
-    if (!tts_engine_init(session->engine, engine_config, &engine_error)) {
-      girara_warning("TTS engine initialization failed, continuing with defaults");
-    }
-    
-    tts_engine_config_free(engine_config);
+  if (engine_config == NULL) {
+    girara_error("TTS plugin initialization failed: engine config allocation error");
+    tts_plugin_cleanup();
+    return false;
   }
+  
+  /* Set engine config from main config */
+  engine_config->speed = tts_config_get_default_speed(session->config);
+  engine_config->volume = tts_config_get_default_volume(session->config);
+  engine_config->pitch = tts_config_get_default_pitch(session->config);
+  engine_config->voice_name = g_strdup(tts_config_get_preferred_voice(session->config));
+  
+  if (!tts_engine_init(session->engine, engine_config, &engine_error)) {
+    girara_error("TTS plugin initialization failed: TTS engine setup error: %d", engine_error);
+    tts_engine_config_free(engine_config);
+    tts_plugin_cleanup();
+    return false;
+  }
+  
+  tts_engine_config_free(engine_config);
 
   /* 3. Initialize audio controller */
+  girara_info("Initializing TTS audio controller...");
   session->audio_controller = tts_audio_controller_new();
   if (session->audio_controller == NULL) {
-    girara_error("TTS plugin initialization failed: audio controller allocation error");
+    girara_error("TTS plugin initialization failed: audio controller initialization error");
     tts_plugin_cleanup();
-    return ZATHURA_ERROR_OUT_OF_MEMORY;
+    return false;
   }
-
-  /* Connect audio controller to TTS engine */
-  tts_audio_controller_set_engine(session->audio_controller, session->engine);
-
-  /* Set audio settings from configuration */
-  tts_audio_controller_set_speed(session->audio_controller, tts_config_get_default_speed(session->config));
-  tts_audio_controller_set_volume(session->audio_controller, tts_config_get_default_volume(session->config));
 
   /* 4. Initialize UI controller */
-  girara_info("🔧 DEBUG: About to create UI controller...");
+  girara_info("Initializing TTS UI controller...");
   session->ui_controller = tts_ui_controller_new(zathura, session->audio_controller);
   if (session->ui_controller == NULL) {
-    girara_error("TTS plugin initialization failed: UI controller allocation error");
+    girara_error("TTS plugin initialization failed: UI controller initialization error");
     tts_plugin_cleanup();
-    return ZATHURA_ERROR_OUT_OF_MEMORY;
+    return false;
   }
-  girara_info("✅ DEBUG: UI controller created successfully");
 
   /* Register keyboard shortcuts and commands */
-  girara_info("🔧 DEBUG: About to register TTS shortcuts...");
+  girara_info("Registering TTS shortcuts...");
   if (!tts_ui_controller_register_shortcuts(session->ui_controller)) {
     girara_warning("Some TTS keyboard shortcuts failed to register");
-  } else {
-    girara_info("✅ DEBUG: TTS shortcuts registration completed successfully");
   }
 
   if (!tts_ui_controller_register_commands(session->ui_controller)) {
@@ -233,7 +162,7 @@ tts_plugin_init(zathura_t* zathura)
   g_tts_plugin->initialized = true;
 
   girara_info("TTS plugin initialized successfully");
-  return ZATHURA_ERROR_OK;
+  return true;
 }
 
 void
@@ -347,163 +276,15 @@ tts_plugin_is_initialized(void)
   return (g_tts_plugin != NULL && g_tts_plugin->initialized);
 }
 
-zathura_error_t
-tts_plugin_validate_state(void)
-{
-  if (g_tts_plugin == NULL) {
-    girara_error("TTS plugin state validation failed: plugin not registered");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (!g_tts_plugin->initialized) {
-    girara_error("TTS plugin state validation failed: plugin not initialized");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (g_tts_plugin->zathura == NULL) {
-    girara_error("TTS plugin state validation failed: invalid zathura instance");
-    return ZATHURA_ERROR_INVALID_ARGUMENTS;
-  }
-
-  /* Validate session */
-  if (g_tts_plugin->session == NULL) {
-    girara_error("TTS plugin state validation failed: session not initialized");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  tts_session_t* session = g_tts_plugin->session;
-  
-  if (!session->active) {
-    girara_error("TTS plugin state validation failed: session not active");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (session->zathura != g_tts_plugin->zathura) {
-    girara_error("TTS plugin state validation failed: session zathura mismatch");
-    return ZATHURA_ERROR_INVALID_ARGUMENTS;
-  }
-
-  /* Validate core components */
-  if (session->config == NULL) {
-    girara_error("TTS plugin state validation failed: configuration not loaded");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (session->engine == NULL) {
-    girara_error("TTS plugin state validation failed: TTS engine not initialized");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (session->audio_controller == NULL) {
-    girara_error("TTS plugin state validation failed: audio controller not initialized");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (session->ui_controller == NULL) {
-    girara_error("TTS plugin state validation failed: UI controller not initialized");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  return ZATHURA_ERROR_OK;
-}
-
 tts_plugin_t*
 tts_plugin_get_instance(void)
 {
   return g_tts_plugin;
 }
 
-/* Function to complete deferred initialization when girara session is ready */
-zathura_error_t
-tts_plugin_complete_initialization(void)
-{
-  if (g_tts_plugin_zathura_instance == NULL) {
-    girara_error("TTS plugin deferred initialization failed: no zathura instance stored");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  if (g_tts_plugin != NULL && g_tts_plugin->initialized) {
-    girara_info("TTS plugin already fully initialized");
-    return ZATHURA_ERROR_OK;
-  }
-
-  girara_info("Completing deferred TTS plugin initialization...");
-
-  /* Check if girara session is now available */
-  girara_session_t* girara_session = zathura_get_session(g_tts_plugin_zathura_instance);
-  if (girara_session == NULL) {
-    girara_warning("TTS plugin deferred initialization: girara session still not ready");
-    return ZATHURA_ERROR_UNKNOWN;
-  }
-
-  /* Now we can complete the full initialization */
-  zathura_error_t result = tts_plugin_init(g_tts_plugin_zathura_instance);
-  if (result == ZATHURA_ERROR_OK) {
-    girara_info("TTS plugin deferred initialization completed successfully");
-    g_tts_config_registered = true;
-  } else {
-    girara_error("TTS plugin deferred initialization failed: %d", result);
-  }
-
-  return result;
-}
-
-/* Utility plugin initialization function */
-static bool
-tts_utility_plugin_init(zathura_t* zathura)
-{
-  if (zathura == NULL) {
-    girara_error("TTS utility plugin initialization failed: invalid zathura instance");
-    return false;
-  }
-
-  girara_info("Initializing TTS utility plugin...");
-
-  /* Store zathura instance for later configuration registration */
-  g_tts_plugin_zathura_instance = zathura;
-  
-  /* Check if girara session is already available */
-  girara_session_t* girara_session = zathura_get_session(zathura);
-  girara_debug("🔧 DEBUG: Utility plugin registration - girara_session: %p", (void*)girara_session);
-  if (girara_session != NULL) {
-    girara_info("TTS utility plugin: girara session is ready, proceeding with full initialization");
-    
-    /* Register the TTS plugin and complete initialization immediately */
-    zathura_error_t result = tts_plugin_register(zathura);
-    if (result != ZATHURA_ERROR_OK) {
-      girara_error("Failed to register TTS plugin: %d", result);
-      return false;
-    }
-    
-    result = tts_plugin_init(zathura);
-    if (result != ZATHURA_ERROR_OK) {
-      girara_error("Failed to initialize TTS plugin: %d", result);
-      tts_plugin_cleanup();
-      return false;
-    }
-    
-    girara_info("TTS plugin fully initialized successfully");
-  } else {
-    girara_info("TTS utility plugin: deferring configuration registration until session is ready");
-
-    /* Register the TTS plugin but defer full initialization */
-    zathura_error_t result = tts_plugin_register(zathura);
-    if (result != ZATHURA_ERROR_OK) {
-      girara_error("Failed to register TTS plugin: %d", result);
-      return false;
-    }
-
-    /* Don't call tts_plugin_init() here - it will be called later when session is ready */
-    girara_info("TTS plugin registered, full initialization deferred until session is ready");
-  }
-
-  girara_info("TTS utility plugin initialized successfully");
-  return true;
-}
-
 /* Register the TTS plugin as a utility plugin */
 ZATHURA_UTILITY_PLUGIN_REGISTER(
   "zathura-tts",
-  0, 1, 0,
-  tts_utility_plugin_init
+  1, 0, 0,
+  tts_plugin_init
 )
